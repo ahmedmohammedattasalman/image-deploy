@@ -96,7 +96,9 @@
         /* Image slider comparison */
         .img-comp-container {
             position: relative;
-            height: 400px; /* Set this to the height of your images */
+            height: auto;
+            min-height: 300px;
+            max-height: 600px;
             width: 100%;
             margin-bottom: 20px;
             border-radius: var(--border-radius);
@@ -114,8 +116,9 @@
         .img-comp-img img {
             display: block;
             width: 100%;
-            height: 100%;
-            object-fit: cover;
+            height: auto;
+            object-fit: contain;
+            max-height: 600px;
         }
 
         .img-comp-slider {
@@ -210,7 +213,8 @@
         .gallery-item img {
             width: 100%;
             height: 200px;
-            object-fit: cover;
+            object-fit: contain;
+            background-color: #f0f0f0;
             transition: transform 0.3s;
         }
         
@@ -445,15 +449,47 @@
             const slider = document.querySelector(".img-comp-slider");
             const container = document.querySelector(".img-comp-container");
             const overlayImg = document.querySelector(".img-comp-overlay");
+            const resultImg = document.querySelector(".img-comp-img img");
             
-            if (!slider || !container || !overlayImg) return;
+            if (!slider || !container || !overlayImg || !resultImg) return;
+            
+            // Set container height based on image dimensions
+            resultImg.onload = function() {
+                // Get natural dimensions of the image
+                const imgHeight = resultImg.naturalHeight;
+                const imgWidth = resultImg.naturalWidth;
+                const containerWidth = container.offsetWidth;
+                
+                // Calculate appropriate height while preserving aspect ratio
+                let newHeight = (imgHeight / imgWidth) * containerWidth;
+                
+                // Constrain height to min/max values
+                newHeight = Math.max(300, Math.min(newHeight, 600));
+                
+                // Set the container height
+                container.style.height = newHeight + "px";
+                
+                // Initialize the slider position after height is set
+                initSliderPosition();
+            };
+            
+            // If image is already loaded, trigger onload manually
+            if (resultImg.complete) {
+                resultImg.onload();
+            }
             
             let width = container.offsetWidth;
             let startX, moved = false;
             
-            // Set initial position (50%)
-            slider.style.left = (width / 2) + "px";
-            overlayImg.style.width = (width / 2) + "px";
+            function initSliderPosition() {
+                // Set initial position (50%)
+                width = container.offsetWidth;
+                slider.style.left = (width / 2) + "px";
+                overlayImg.style.width = (width / 2) + "px";
+            }
+            
+            // Initialize slider position
+            initSliderPosition();
             
             slider.addEventListener("mousedown", slideStart);
             window.addEventListener("mouseup", slideEnd);
@@ -501,6 +537,11 @@
                 width = container.offsetWidth;
                 const sliderPos = parseInt(slider.style.left);
                 const ratio = sliderPos / width;
+                
+                // Recalculate image dimensions on resize
+                if (resultImg.complete) {
+                    resultImg.onload();
+                }
                 
                 slider.style.left = (width * ratio) + "px";
                 overlayImg.style.width = (width * ratio) + "px";

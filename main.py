@@ -120,8 +120,9 @@ def index():
                     # Also save as the standard result_image.png for continued edits
                     standard_result_path = os.path.join(app.config['RESULT_FOLDER'], 'result_image.png')
                     
-                    result_image.save(result_path)
-                    result_image.save(standard_result_path)
+                    # Preserve original quality
+                    result_image.save(result_path, format="PNG", quality=100)
+                    result_image.save(standard_result_path, format="PNG", quality=100)
             
             # Determine which original image to display
             if continue_edit:
@@ -130,7 +131,7 @@ def index():
             else:
                 # Save a copy of the input as the standard input_image.png
                 input_copy_path = os.path.join(app.config['UPLOAD_FOLDER'], 'input_image.png')
-                image.save(input_copy_path)
+                image.save(input_copy_path, format="PNG", quality=100)
                 original_image_path = 'uploads/' + os.path.basename(image_path)
             
             return render_template('index.html', 
