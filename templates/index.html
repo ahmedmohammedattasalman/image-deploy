@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image AI Editor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .header {
+            background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+            color: white;
+            padding: 20px 0;
+            margin-bottom: 30px;
+            border-radius: 0 0 15px 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .card {
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+            transition: transform 0.3s;
+            margin-bottom: 20px;
+            border: none;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+            border: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+        }
+        .image-container {
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            margin-top: 15px;
+            position: relative;
+        }
+        .image-container img {
+            width: 100%;
+            height: auto;
+            transition: transform 0.3s;
+        }
+        .image-container:hover img {
+            transform: scale(1.02);
+        }
+        .upload-area {
+            border: 2px dashed #dee2e6;
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .upload-area:hover {
+            border-color: #6a11cb;
+            background-color: #f0f3ff;
+        }
+        .result-text {
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        #file-name {
+            margin-top: 10px;
+            font-style: italic;
+        }
+        .error-message {
+            color: #dc3545;
+            background-color: #f8d7da;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 15px;
+        }
+        .arrow-icon {
+            font-size: 2rem;
+            color: #6a11cb;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px 0;
+        }
+        .spinner-border {
+            color: #6a11cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="header text-center">
+        <h1>AI Image Editor</h1>
+        <p class="lead">Upload an image and describe how you want to edit it</p>
+    </div>
+
+    <div class="container">
+        {% if error %}
+        <div class="error-message">
+            <strong>Error:</strong> {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="POST" enctype="multipart/form-data" onsubmit="showLoading()">
+            <div class="row">
+                <div class="col-lg-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">1. Upload Your Image</h5>
+                            <div class="upload-area" onclick="document.getElementById('file').click()">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="#6a11cb" class="bi bi-cloud-arrow-up" viewBox="0 0 16 16">
+                                    <path fill-rule="evenodd" d="M7.646 5.146a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L8.5 6.707V10.5a.5.5 0 0 1-1 0V6.707L6.354 7.854a.5.5 0 1 1-.708-.708l2-2z"/>
+                                    <path d="M4.406 3.342A5.53 5.53 0 0 1 8 2c2.69 0 4.923 2 5.166 4.579C14.758 6.804 16 8.137 16 9.773 16 11.569 14.502 13 12.687 13H3.781C1.708 13 0 11.366 0 9.318c0-1.763 1.266-3.223 2.942-3.593.143-.863.698-1.723 1.464-2.383zm.653.757c-.757.653-1.153 1.44-1.153 2.056v.448l-.445.049C2.064 6.805 1 7.952 1 9.318 1 10.785 2.23 12 3.781 12h8.906C13.98 12 15 10.988 15 9.773c0-1.216-1.02-2.228-2.313-2.228h-.5v-.5C12.188 4.825 10.328 3 8 3a4.53 4.53 0 0 0-2.941 1.1z"/>
+                                </svg>
+                                <p class="mt-2">Drag and drop or click to choose file</p>
+                                <input type="file" name="file" id="file" class="d-none" onchange="updateFileName(this)">
+                                <div id="file-name"></div>
+                            </div>
+
+                            {% if original_image %}
+                            <div class="image-container mt-4">
+                                <img src="{{ url_for('static', filename=original_image) }}" alt="Original Image" class="img-fluid">
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">2. Describe Your Edit</h5>
+                            <div class="form-group">
+                                <textarea class="form-control" name="prompt" rows="5" placeholder="Example: Remove the background, Change hair color to blonde, Make it look like a cartoon, etc." required>{% if prompt %}{{ prompt }}{% endif %}</textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100 mt-3">Generate Edited Image</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        <div class="loading" id="loading-indicator">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Processing your image with AI... This may take a moment.</p>
+        </div>
+
+        {% if result_image %}
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Your Edited Image</h5>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="image-container">
+                                    <img src="{{ url_for('static', filename=original_image) }}" alt="Original Image" class="img-fluid">
+                                    <div class="text-center mt-2">Original</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="image-container">
+                                    <img src="{{ url_for('static', filename=result_image) }}" alt="Edited Image" class="img-fluid">
+                                    <div class="text-center mt-2">Edited</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {% if response_text %}
+                        <div class="result-text mt-4">
+                            <h6>AI Response:</h6>
+                            <p>{{ response_text }}</p>
+                        </div>
+                        {% endif %}
+                        
+                        <div class="text-center mt-4">
+                            <a href="{{ url_for('static', filename=result_image) }}" download="edited-image.png" class="btn btn-primary">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download me-2" viewBox="0 0 16 16">
+                                    <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                                    <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+                                </svg>
+                                Download Edited Image
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <footer class="bg-light text-center text-muted py-4 mt-5">
+        <div class="container">
+            <p>Powered by Google Gemini AI</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function updateFileName(input) {
+            const fileName = input.files[0]?.name || '';
+            document.getElementById('file-name').textContent = fileName;
+        }
+
+        function showLoading() {
+            if (document.getElementById('file').files.length > 0) {
+                document.getElementById('loading-indicator').style.display = 'block';
+            }
+        }
+
+        // Drag and drop functionality
+        const uploadArea = document.querySelector('.upload-area');
+        
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, preventDefaults, false);
+        });
+        
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        ['dragenter', 'dragover'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, highlight, false);
+        });
+        
+        ['dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, unhighlight, false);
+        });
+        
+        function highlight() {
+            uploadArea.classList.add('bg-light');
+        }
+        
+        function unhighlight() {
+            uploadArea.classList.remove('bg-light');
+        }
+        
+        uploadArea.addEventListener('drop', handleDrop, false);
+        
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            
+            if (files.length) {
+                document.getElementById('file').files = files;
+                updateFileName(document.getElementById('file'));
+            }
+        }
+    </script>
+</body>
+</html> 
