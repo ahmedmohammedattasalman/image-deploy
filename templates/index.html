@@ -104,6 +104,7 @@
             border-radius: var(--border-radius);
             overflow: hidden;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            cursor: col-resize;
         }
 
         .img-comp-img {
@@ -111,6 +112,12 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
+            touch-action: none;
+        }
+        
+        .img-comp-overlay {
+            border-right: 2px solid rgba(255, 255, 255, 0.7);
+            box-shadow: 4px 0px 10px -4px rgba(0,0,0,0.3);
         }
 
         .img-comp-img img {
@@ -119,6 +126,7 @@
             height: auto;
             object-fit: contain;
             max-height: 600px;
+            pointer-events: none;
         }
 
         .img-comp-slider {
@@ -130,22 +138,39 @@
             background-color: var(--primary-color);
             opacity: 0.7;
             border-radius: 50%;
-            top: calc(50% - 20px);
+            top: 50%;
+            transform: translateY(-50%);
+            left: 50%; /* Default position at 50% */
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+            border: 2px solid #fff;
+            transition: background-color 0.2s;
+        }
+        
+        .img-comp-slider:hover {
+            background-color: var(--secondary-color);
+            opacity: 0.9;
         }
         
         .img-comp-slider::before, .img-comp-slider::after {
             content: "";
             position: absolute;
-            width: 1px;
-            height: 200%;
+            width: 2px;
+            height: 50%;
             background: white;
-            top: -50%;
             left: 50%;
             transform: translateX(-50%);
+        }
+        
+        .img-comp-slider::before {
+            top: 10%;
+        }
+        
+        .img-comp-slider::after {
+            bottom: 10%;
         }
         
         .img-comp-slider i {
@@ -161,6 +186,7 @@
             justify-content: space-between;
             padding: 0 20px;
             z-index: 5;
+            pointer-events: none;
         }
         
         .comparison-label {
@@ -169,6 +195,15 @@
             padding: 5px 10px;
             border-radius: 15px;
             font-size: 12px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
+        
+        .original-label {
+            margin-right: auto;
+        }
+        
+        .edited-label {
+            margin-left: auto;
         }
         
         /* Gallery styling */
@@ -368,8 +403,8 @@
                                 <i class="fas fa-arrows-alt-h"></i>
                             </div>
                             <div class="comparison-labels">
-                                <div class="comparison-label">Original</div>
-                                <div class="comparison-label">Edited</div>
+                                <div class="comparison-label original-label">Original</div>
+                                <div class="comparison-label edited-label">Edited</div>
                             </div>
                         </div>
                         
@@ -455,47 +490,57 @@
             
             // Set container height based on image dimensions
             resultImg.onload = function() {
-                // Get natural dimensions of the image
-                const imgHeight = resultImg.naturalHeight;
-                const imgWidth = resultImg.naturalWidth;
-                const containerWidth = container.offsetWidth;
-                
-                // Calculate appropriate height while preserving aspect ratio
-                let newHeight = (imgHeight / imgWidth) * containerWidth;
-                
-                // Constrain height to min/max values
-                newHeight = Math.max(300, Math.min(newHeight, 600));
-                
-                // Set the container height
-                container.style.height = newHeight + "px";
-                
-                // Initialize the slider position after height is set
-                initSliderPosition();
+                try {
+                    // Get natural dimensions of the image
+                    const imgHeight = resultImg.naturalHeight;
+                    const imgWidth = resultImg.naturalWidth;
+                    const containerWidth = container.offsetWidth;
+                    
+                    // Calculate appropriate height while preserving aspect ratio
+                    let newHeight = (imgHeight / imgWidth) * containerWidth;
+                    
+                    // Constrain height to min/max values
+                    newHeight = Math.max(300, Math.min(newHeight, 600));
+                    
+                    // Set the container height
+                    container.style.height = newHeight + "px";
+                    
+                    // Initialize the slider position after height is set
+                    initSliderPosition();
+                } catch (e) {
+                    console.error("Error setting container height:", e);
+                    // Fallback to a default height
+                    container.style.height = "400px";
+                    initSliderPosition();
+                }
             };
             
             // If image is already loaded, trigger onload manually
             if (resultImg.complete) {
-                resultImg.onload();
+                setTimeout(() => {
+                    resultImg.onload();
+                }, 100);
             }
             
             let width = container.offsetWidth;
             let startX, moved = false;
             
             function initSliderPosition() {
-                // Set initial position (50%)
-                width = container.offsetWidth;
-                slider.style.left = (width / 2) + "px";
-                overlayImg.style.width = (width / 2) + "px";
+                try {
+                    // Set initial position (50%)
+                    width = container.offsetWidth;
+                    slider.style.left = (width / 2) + "px";
+                    overlayImg.style.width = (width / 2) + "px";
+                } catch (e) {
+                    console.error("Error initializing slider position:", e);
+                }
             }
             
-            // Initialize slider position
+            // Initialize slider position right away
             initSliderPosition();
             
-            slider.addEventListener("mousedown", slideStart);
-            window.addEventListener("mouseup", slideEnd);
-            
-            slider.addEventListener("touchstart", slideStart);
-            window.addEventListener("touchend", slideEnd);
+            // Wait for everything to be properly loaded and try again
+            setTimeout(initSliderPosition, 500);
             
             function slideStart(e) {
                 e.preventDefault();
@@ -508,22 +553,26 @@
             function slideMove(e) {
                 if (!moved) return;
                 
-                const x = e.type === "touchmove" ? e.touches[0].clientX : e.clientX;
-                const pos = (x - startX) + parseInt(slider.style.left);
-                
-                // Constrain within bounds
-                if (pos < 0) {
-                    slider.style.left = "0px";
-                    overlayImg.style.width = "0px";
-                } else if (pos > width) {
-                    slider.style.left = width + "px";
-                    overlayImg.style.width = width + "px";
-                } else {
-                    slider.style.left = pos + "px";
-                    overlayImg.style.width = pos + "px";
+                try {
+                    const x = e.type === "touchmove" ? e.touches[0].clientX : e.clientX;
+                    const pos = (x - startX) + parseInt(slider.style.left || "0");
+                    
+                    // Constrain within bounds
+                    if (pos < 0) {
+                        slider.style.left = "0px";
+                        overlayImg.style.width = "0px";
+                    } else if (pos > width) {
+                        slider.style.left = width + "px";
+                        overlayImg.style.width = width + "px";
+                    } else {
+                        slider.style.left = pos + "px";
+                        overlayImg.style.width = pos + "px";
+                    }
+                    
+                    startX = x;
+                } catch (e) {
+                    console.error("Error during slide movement:", e);
                 }
-                
-                startX = x;
             }
             
             function slideEnd() {
@@ -532,19 +581,34 @@
                 window.removeEventListener("touchmove", slideMove);
             }
             
+            // Attach event listeners
+            slider.addEventListener("mousedown", slideStart);
+            window.addEventListener("mouseup", slideEnd);
+            
+            slider.addEventListener("touchstart", slideStart);
+            window.addEventListener("touchend", slideEnd);
+            
             // Handle window resize
             window.addEventListener("resize", function() {
-                width = container.offsetWidth;
-                const sliderPos = parseInt(slider.style.left);
-                const ratio = sliderPos / width;
-                
-                // Recalculate image dimensions on resize
-                if (resultImg.complete) {
-                    resultImg.onload();
+                try {
+                    width = container.offsetWidth;
+                    let sliderPos = parseInt(slider.style.left || "0");
+                    // If slider is not positioned yet, default to center
+                    if (isNaN(sliderPos)) {
+                        sliderPos = width / 2;
+                    }
+                    const ratio = sliderPos / width;
+                    
+                    // Recalculate image dimensions on resize
+                    if (resultImg.complete) {
+                        resultImg.onload();
+                    }
+                    
+                    slider.style.left = (width * ratio) + "px";
+                    overlayImg.style.width = (width * ratio) + "px";
+                } catch (e) {
+                    console.error("Error handling resize:", e);
                 }
-                
-                slider.style.left = (width * ratio) + "px";
-                overlayImg.style.width = (width * ratio) + "px";
             });
         }
         
@@ -695,10 +759,38 @@
             }
         }
         
+        // Handle image comparison container touch/click for slider movement
+        function setupSliderContainerEvents() {
+            const container = document.querySelector('.img-comp-container');
+            if (!container) return;
+            
+            // Allow clicking anywhere in container to move slider
+            container.addEventListener('click', function(e) {
+                const slider = document.querySelector('.img-comp-slider');
+                const overlayImg = document.querySelector('.img-comp-overlay');
+                
+                if (!slider || !overlayImg) return;
+                
+                const rect = container.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const containerWidth = container.offsetWidth;
+                
+                // Don't move if clicked on the slider itself
+                if (e.target.classList.contains('img-comp-slider') || e.target.closest('.img-comp-slider')) {
+                    return;
+                }
+                
+                // Set slider position to click position
+                slider.style.left = x + 'px';
+                overlayImg.style.width = x + 'px';
+            });
+        }
+        
         // Initialize on document load
         document.addEventListener('DOMContentLoaded', function() {
             setupDragAndDrop();
             initComparisonSlider();
+            setupSliderContainerEvents();
             gallery.render();
             saveToGallery();
         });
