@@ -1,10 +1,12 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file
+from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify
 import os
 from google import genai
 from google.genai import types
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 import base64
+import uuid
+import time
 
 # Configuration
 API_KEY = "AIzaSyBbE0FW-7SEm1FW0NgusR18GmsV10aAVYE"
@@ -16,6 +18,7 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['RESULT_FOLDER'] = RESULT_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
 
 # Create directories if they don't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -56,22 +59,37 @@ def index():
         
         prompt = request.form['prompt']
         
-        # Check if file is provided
-        if 'file' not in request.files:
-            return render_template('index.html', error="Please upload an image.")
+        # Check if this is a continued edit
+        continue_edit = request.form.get('continue_edit') == 'true'
         
-        file = request.files['file']
-        
-        # Check if file is valid
-        if file.filename == '':
-            return render_template('index.html', error="No file selected.")
-        
-        if not allowed_file(file.filename):
-            return render_template('index.html', error="File type not allowed. Please upload PNG or JPG images.")
-        
-        # Save the uploaded file
-        image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'input_image.png')
-        file.save(image_path)
+        if continue_edit:
+            # Use the last result image as the input for the next edit
+            last_result_path = os.path.join(app.config['RESULT_FOLDER'], 'result_image.png')
+            
+            if not os.path.exists(last_result_path):
+                return render_template('index.html', error="Previous result not found. Please start with a new image.")
+            
+            # Use the existing result as input
+            image_path = last_result_path
+        else:
+            # Normal flow - check for file upload
+            if 'file' not in request.files:
+                return render_template('index.html', error="Please upload an image.")
+            
+            file = request.files['file']
+            
+            # Check if file is valid
+            if file.filename == '':
+                return render_template('index.html', error="No file selected.")
+            
+            if not allowed_file(file.filename):
+                return render_template('index.html', error="File type not allowed. Please upload PNG or JPG images.")
+            
+            # Save the uploaded file with a unique name to avoid caching issues
+            timestamp = int(time.time())
+            input_filename = f'input_image_{timestamp}.png'
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], input_filename)
+            file.save(image_path)
         
         # Process the image with Gemini
         try:
@@ -89,19 +107,36 @@ def index():
             # Process the response
             response_text = ""
             result_path = None
+            timestamp = int(time.time())
+            result_filename = f'result_image_{timestamp}.png'
             
             for part in response.candidates[0].content.parts:
                 if part.text is not None:
                     response_text += part.text
                 elif part.inline_data is not None:
                     result_image = Image.open(BytesIO(part.inline_data.data))
-                    result_path = os.path.join(app.config['RESULT_FOLDER'], 'result_image.png')
+                    # Save with timestamp to avoid browser caching old images
+                    result_path = os.path.join(app.config['RESULT_FOLDER'], result_filename)
+                    # Also save as the standard result_image.png for continued edits
+                    standard_result_path = os.path.join(app.config['RESULT_FOLDER'], 'result_image.png')
+                    
                     result_image.save(result_path)
+                    result_image.save(standard_result_path)
+            
+            # Determine which original image to display
+            if continue_edit:
+                # For continued edits, use the previous result_image.png as original
+                original_image_path = 'uploads/input_image.png' if os.path.exists(os.path.join(UPLOAD_FOLDER, 'input_image.png')) else image_path.replace(app.config['UPLOAD_FOLDER'], 'uploads')
+            else:
+                # Save a copy of the input as the standard input_image.png
+                input_copy_path = os.path.join(app.config['UPLOAD_FOLDER'], 'input_image.png')
+                image.save(input_copy_path)
+                original_image_path = 'uploads/' + os.path.basename(image_path)
             
             return render_template('index.html', 
                                   prompt=prompt, 
-                                  original_image='uploads/input_image.png', 
-                                  result_image='results/result_image.png',
+                                  original_image=original_image_path, 
+                                  result_image=f'results/{result_filename}',
                                   response_text=response_text)
         
         except Exception as e:
