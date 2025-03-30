@@ -426,10 +426,10 @@
                         
                         <div class="img-comp-container">
                             <div class="img-comp-img">
-                                <img src="{% if is_temp_file %}{{ url_for('temp_files', filename=result_image.split('/')[-1]) }}{% else %}{{ url_for('static', filename=result_image) }}{% endif %}" alt="Edited Image">
+                                <img src="{% if is_b64_image %}data:image/png;base64,{{ result_image_b64 }}{% elif is_temp_file %}{{ url_for('temp_files', filename=result_image.split('/')[-1]) }}{% else %}{{ url_for('static', filename=result_image) }}{% endif %}" alt="Edited Image">
                             </div>
                             <div class="img-comp-img img-comp-overlay">
-                                <img src="{% if is_temp_file %}{{ url_for('temp_files', filename=original_image.split('/')[-1]) }}{% else %}{{ url_for('static', filename=original_image) }}{% endif %}" alt="Original Image">
+                                <img src="{% if is_b64_image %}data:image/png;base64,{{ original_image_b64 }}{% elif is_temp_file %}{{ url_for('temp_files', filename=original_image.split('/')[-1]) }}{% else %}{{ url_for('static', filename=original_image) }}{% endif %}" alt="Original Image">
                             </div>
                             <div class="img-comp-slider">
                                 <i class="fas fa-arrows-alt-h"></i>
@@ -444,7 +444,9 @@
                             <button class="btn btn-outline-primary" onclick="window.location.href='/'">
                                 <i class="fas fa-plus me-2"></i>New Image
                             </button>
-                            <a href="{% if is_temp_file %}{{ url_for('temp_files', filename=result_image.split('/')[-1]) }}{% else %}{{ url_for('static', filename=result_image) }}{% endif %}" download="edited-image.png" class="btn btn-primary">
+                            <a href="{% if is_b64_image %}javascript:void(0);{% elif is_temp_file %}{{ url_for('temp_files', filename=result_image.split('/')[-1]) }}{% else %}{{ url_for('static', filename=result_image) }}{% endif %}" 
+                               {% if is_b64_image %}onclick="downloadBase64Image('edited-image.png', '{{ result_image_b64 }}');"{% else %}download="edited-image.png"{% endif %}
+                               class="btn btn-primary">
                                 <i class="fas fa-download me-2"></i>Download
                             </a>
                         </div>
@@ -460,6 +462,10 @@
                             <h5 class="card-title">Continue Editing</h5>
                             <form method="POST" enctype="multipart/form-data" onsubmit="showLoading()" id="continue-edit-form">
                                 <input type="hidden" name="continue_edit" value="true">
+                                <!-- Store previous result for continued editing -->
+                                <input type="hidden" name="previous_result_b64" value="{{ result_image_b64 }}">
+                                <input type="hidden" name="original_image_b64" value="{{ original_image_b64 }}">
+                                <input type="hidden" name="first_original_b64" value="{{ first_original_b64|default(original_image_b64) }}">
                                 <div class="form-group">
                                     <textarea class="form-control" name="prompt" rows="3" placeholder="Describe your next edit. Example: Now make it black and white, Add a vintage filter, etc." required></textarea>
                                 </div>
@@ -492,7 +498,13 @@
                     </div>
                 </div>
                 
-                {% if original_image and result_image %}
+                {% if original_image_b64 and result_image_b64 %}
+                <div id="current-edit-data" 
+                     data-original="data:image/png;base64,{{ original_image_b64 }}"
+                     data-result="data:image/png;base64,{{ result_image_b64 }}"
+                     data-prompt="{{ prompt|default('') }}">
+                </div>
+                {% elif original_image and result_image %}
                 <div id="current-edit-data" 
                      data-original="{% if is_temp_file %}{{ url_for('temp_files', filename=original_image.split('/')[-1]) }}{% else %}{{ url_for('static', filename=original_image) }}{% endif %}"
                      data-result="{% if is_temp_file %}{{ url_for('temp_files', filename=result_image.split('/')[-1]) }}{% else %}{{ url_for('static', filename=result_image) }}{% endif %}"
@@ -644,12 +656,34 @@
             });
         }
         
-        // Gallery management
+        // Gallery management (updated for Base64)
         class Gallery {
             constructor() {
                 this.items = JSON.parse(localStorage.getItem('gallery') || '[]');
                 this.container = document.getElementById('gallery-items');
                 this.emptyMessage = document.getElementById('empty-gallery');
+                
+                // Fix any broken items (those without data URI prefix)
+                this.items = this.items.map(item => {
+                    // Fix original image source if needed
+                    if (item.originalImage && item.originalImage.indexOf('data:') !== 0 && item.originalImage.indexOf('http') !== 0) {
+                        if (item.originalImage.indexOf('base64,') === -1) {
+                            item.originalImage = 'data:image/png;base64,' + item.originalImage;
+                        }
+                    }
+                    
+                    // Fix result image source if needed
+                    if (item.resultImage && item.resultImage.indexOf('data:') !== 0 && item.resultImage.indexOf('http') !== 0) {
+                        if (item.resultImage.indexOf('base64,') === -1) {
+                            item.resultImage = 'data:image/png;base64,' + item.resultImage;
+                        }
+                    }
+                    
+                    return item;
+                });
+                
+                // Save fixed items
+                this.save();
             }
             
             add(imageData) {
@@ -867,6 +901,16 @@
                     previewImage(fileInput);
                 }
             });
+        }
+
+        // Function to download base64 image
+        function downloadBase64Image(filename, base64Data) {
+            const link = document.createElement('a');
+            link.href = `data:image/png;base64,${base64Data}`;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         }
 
         // Initialize on document load
