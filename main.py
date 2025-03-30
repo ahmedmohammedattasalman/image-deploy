@@ -1,5 +1,7 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify
+from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify, send_from_directory
 import os
+import io
+import tempfile
 from google import genai
 from google.genai import types
 from PIL import Image, ImageDraw, ImageFont
@@ -7,22 +9,16 @@ from io import BytesIO
 import base64
 import uuid
 import time
+import shutil
 
 # Configuration
 API_KEY = "AIzaSyBbE0FW-7SEm1FW0NgusR18GmsV10aAVYE"
-UPLOAD_FOLDER = 'static/uploads'
-RESULT_FOLDER = 'static/results'
+TEMP_FOLDER = tempfile.mkdtemp()  # Create temporary directory for session
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
 # Initialize Flask app
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['RESULT_FOLDER'] = RESULT_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
-
-# Create directories if they don't exist
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(RESULT_FOLDER, exist_ok=True)
 
 # Initialize Gemini client
 client = genai.Client(api_key=API_KEY)
@@ -30,7 +26,15 @@ client = genai.Client(api_key=API_KEY)
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# Create a sample image if ahmed.png doesn't exist
+# Cleanup temporary files on shutdown
+@app.teardown_appcontext
+def cleanup_temp_files(exception=None):
+    try:
+        shutil.rmtree(TEMP_FOLDER)
+    except:
+        pass
+
+# Create a sample image
 def create_sample_image():
     # Create a sample 500x500 image with some text
     image = Image.new('RGB', (500, 500), color=(73, 109, 137))
@@ -45,10 +49,7 @@ def create_sample_image():
     d.text((100, 200), "Sample Image", fill=(255, 255, 255), font=font)
     d.text((100, 250), "Use this for testing", fill=(255, 255, 255), font=font)
     
-    # Save the image
-    sample_path = os.path.join(app.config['UPLOAD_FOLDER'], 'sample_image.png')
-    image.save(sample_path)
-    return sample_path
+    return image
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -64,13 +65,17 @@ def index():
         
         if continue_edit:
             # Use the last result image as the input for the next edit
-            last_result_path = os.path.join(app.config['RESULT_FOLDER'], 'result_image.png')
+            if 'last_result' not in request.cookies:
+                return render_template('index.html', error="Previous result not found. Please start with a new image.")
             
+            # Get last result from cookie
+            last_result_path = request.cookies.get('last_result')
             if not os.path.exists(last_result_path):
                 return render_template('index.html', error="Previous result not found. Please start with a new image.")
             
             # Use the existing result as input
-            image_path = last_result_path
+            image = Image.open(last_result_path)
+            original_image_path = request.cookies.get('original_image', last_result_path)
         else:
             # Normal flow - check for file upload
             if 'file' not in request.files:
@@ -85,16 +90,17 @@ def index():
             if not allowed_file(file.filename):
                 return render_template('index.html', error="File type not allowed. Please upload PNG or JPG images.")
             
-            # Save the uploaded file with a unique name to avoid caching issues
+            # Read the image directly without saving
+            image = Image.open(file.stream)
+            
+            # Save a temporary copy for display
             timestamp = int(time.time())
-            input_filename = f'input_image_{timestamp}.png'
-            image_path = os.path.join(app.config['UPLOAD_FOLDER'], input_filename)
-            file.save(image_path)
+            original_filename = f'input_image_{timestamp}.png'
+            original_image_path = os.path.join(TEMP_FOLDER, original_filename)
+            image.save(original_image_path, format="PNG", quality=100)
         
         # Process the image with Gemini
         try:
-            image = Image.open(image_path)
-            
             # Generate content using Gemini
             response = client.models.generate_content(
                 model="gemini-2.0-flash-exp-image-generation",
@@ -106,53 +112,48 @@ def index():
             
             # Process the response
             response_text = ""
-            result_path = None
             timestamp = int(time.time())
             result_filename = f'result_image_{timestamp}.png'
+            result_image_path = os.path.join(TEMP_FOLDER, result_filename)
             
             for part in response.candidates[0].content.parts:
                 if part.text is not None:
                     response_text += part.text
                 elif part.inline_data is not None:
                     result_image = Image.open(BytesIO(part.inline_data.data))
-                    # Save with timestamp to avoid browser caching old images
-                    result_path = os.path.join(app.config['RESULT_FOLDER'], result_filename)
-                    # Also save as the standard result_image.png for continued edits
-                    standard_result_path = os.path.join(app.config['RESULT_FOLDER'], 'result_image.png')
-                    
-                    # Preserve original quality
-                    result_image.save(result_path, format="PNG", quality=100)
-                    result_image.save(standard_result_path, format="PNG", quality=100)
+                    # Save in temporary location
+                    result_image.save(result_image_path, format="PNG", quality=100)
             
-            # Determine which original image to display
-            if continue_edit:
-                # For continued edits, use the previous result_image.png as original
-                original_image_path = 'uploads/input_image.png' if os.path.exists(os.path.join(UPLOAD_FOLDER, 'input_image.png')) else image_path.replace(app.config['UPLOAD_FOLDER'], 'uploads')
+            # Set paths for template
+            if not continue_edit:
+                template_original_path = original_image_path
             else:
-                # Save a copy of the input as the standard input_image.png
-                input_copy_path = os.path.join(app.config['UPLOAD_FOLDER'], 'input_image.png')
-                image.save(input_copy_path, format="PNG", quality=100)
-                original_image_path = 'uploads/' + os.path.basename(image_path)
+                template_original_path = original_image_path
             
-            return render_template('index.html', 
-                                  prompt=prompt, 
-                                  original_image=original_image_path, 
-                                  result_image=f'results/{result_filename}',
-                                  response_text=response_text)
+            # Create response
+            response = render_template('index.html', 
+                                 prompt=prompt, 
+                                 original_image=template_original_path,
+                                 result_image=result_image_path,
+                                 response_text=response_text,
+                                 is_temp_file=True)
+            
+            # Set cookies for future edits
+            resp = app.make_response(response)
+            resp.set_cookie('last_result', result_image_path)
+            if not continue_edit:
+                resp.set_cookie('original_image', original_image_path)
+            
+            return resp
         
         except Exception as e:
             return render_template('index.html', error=f"Error processing image: {str(e)}")
     
     return render_template('index.html')
 
-@app.route('/static/<path:filename>')
-def static_files(filename):
-    return send_file(os.path.join('static', filename))
+@app.route('/temp/<path:filename>')
+def temp_files(filename):
+    return send_from_directory(TEMP_FOLDER, filename)
 
 if __name__ == '__main__':
-    # Create a sample image if ahmed.png doesn't exist anymore
-    if not os.path.exists('ahmed.png') and not os.path.exists(os.path.join(UPLOAD_FOLDER, 'input_image.png')):
-        create_sample_image()
-        print("Created a sample image at static/uploads/sample_image.png for testing purposes.")
-    
     app.run(debug=True)

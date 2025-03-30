@@ -330,6 +330,31 @@
             margin-top: 20px;
         }
         
+        .image-preview-wrapper {
+            position: relative;
+            transition: all 0.3s;
+            background-color: #f0f0f0;
+            border: 2px solid transparent;
+        }
+        
+        .image-preview-wrapper:hover {
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+        }
+        
+        #image-preview-container.border-primary .image-preview-wrapper {
+            border-color: var(--primary-color);
+            background-color: rgba(67, 97, 238, 0.05);
+        }
+        
+        #image-preview {
+            transition: transform 0.3s;
+            background-color: #f0f0f0;
+        }
+        
+        .image-preview-wrapper:hover #image-preview {
+            transform: scale(1.02);
+        }
+        
         footer {
             background-color: var(--dark-color);
             color: white;
@@ -369,8 +394,15 @@
                             <div class="upload-area" onclick="document.getElementById('file').click()">
                                 <i class="fas fa-cloud-upload-alt fa-3x mb-3" style="color: var(--primary-color);"></i>
                                 <p>Drag and drop or click to choose file</p>
-                                <input type="file" name="file" id="file" class="d-none" onchange="updateFileName(this)" accept="image/*">
+                                <input type="file" name="file" id="file" class="d-none" onchange="updateFileName(this); previewImage(this);" accept="image/*">
                                 <div id="file-name"></div>
+                            </div>
+                            
+                            <div id="image-preview-container" class="mt-4" style="display: none;">
+                                <h6>Image Preview:</h6>
+                                <div class="image-preview-wrapper" style="max-height: 300px; overflow: hidden; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);">
+                                    <img id="image-preview" src="#" alt="Preview" style="width: 100%; max-height: 300px; object-fit: contain;">
+                                </div>
                             </div>
                             
                             <div class="mt-4">
@@ -394,10 +426,10 @@
                         
                         <div class="img-comp-container">
                             <div class="img-comp-img">
-                                <img src="{{ url_for('static', filename=result_image) }}" alt="Edited Image">
+                                <img src="{% if is_temp_file %}{{ url_for('temp_files', filename=result_image.split('/')[-1]) }}{% else %}{{ url_for('static', filename=result_image) }}{% endif %}" alt="Edited Image">
                             </div>
                             <div class="img-comp-img img-comp-overlay">
-                                <img src="{{ url_for('static', filename=original_image) }}" alt="Original Image">
+                                <img src="{% if is_temp_file %}{{ url_for('temp_files', filename=original_image.split('/')[-1]) }}{% else %}{{ url_for('static', filename=original_image) }}{% endif %}" alt="Original Image">
                             </div>
                             <div class="img-comp-slider">
                                 <i class="fas fa-arrows-alt-h"></i>
@@ -412,7 +444,7 @@
                             <button class="btn btn-outline-primary" onclick="window.location.href='/'">
                                 <i class="fas fa-plus me-2"></i>New Image
                             </button>
-                            <a href="{{ url_for('static', filename=result_image) }}" download="edited-image.png" class="btn btn-primary">
+                            <a href="{% if is_temp_file %}{{ url_for('temp_files', filename=result_image.split('/')[-1]) }}{% else %}{{ url_for('static', filename=result_image) }}{% endif %}" download="edited-image.png" class="btn btn-primary">
                                 <i class="fas fa-download me-2"></i>Download
                             </a>
                         </div>
@@ -462,8 +494,8 @@
                 
                 {% if original_image and result_image %}
                 <div id="current-edit-data" 
-                     data-original="{{ url_for('static', filename=original_image) }}"
-                     data-result="{{ url_for('static', filename=result_image) }}"
+                     data-original="{% if is_temp_file %}{{ url_for('temp_files', filename=original_image.split('/')[-1]) }}{% else %}{{ url_for('static', filename=original_image) }}{% endif %}"
+                     data-result="{% if is_temp_file %}{{ url_for('temp_files', filename=result_image.split('/')[-1]) }}{% else %}{{ url_for('static', filename=result_image) }}{% endif %}"
                      data-prompt="{{ prompt|default('') }}">
                 </div>
                 {% endif %}
@@ -696,6 +728,25 @@
             const fileName = input.files[0]?.name || '';
             document.getElementById('file-name').textContent = fileName;
         }
+        
+        function previewImage(input) {
+            const preview = document.getElementById('image-preview');
+            const previewContainer = document.getElementById('image-preview-container');
+            
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    preview.src = e.target.result;
+                    previewContainer.style.display = 'block';
+                };
+                
+                reader.readAsDataURL(input.files[0]);
+            } else {
+                preview.src = '#';
+                previewContainer.style.display = 'none';
+            }
+        }
 
         function showLoading() {
             if (document.getElementById('file')?.files?.length > 0 || document.getElementById('continue-edit-form')) {
@@ -786,11 +837,44 @@
             });
         }
         
+        // Handle drag and drop on the image preview as well
+        function setupImagePreviewDragDrop() {
+            const previewContainer = document.getElementById('image-preview-container');
+            if (!previewContainer) return;
+            
+            previewContainer.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                previewContainer.classList.add('border-primary');
+            });
+            
+            previewContainer.addEventListener('dragleave', function() {
+                previewContainer.classList.remove('border-primary');
+            });
+            
+            previewContainer.addEventListener('drop', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                previewContainer.classList.remove('border-primary');
+                
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                
+                if (files.length) {
+                    const fileInput = document.getElementById('file');
+                    fileInput.files = files;
+                    updateFileName(fileInput);
+                    previewImage(fileInput);
+                }
+            });
+        }
+
         // Initialize on document load
         document.addEventListener('DOMContentLoaded', function() {
             setupDragAndDrop();
             initComparisonSlider();
             setupSliderContainerEvents();
+            setupImagePreviewDragDrop();
             gallery.render();
             saveToGallery();
         });
