@@ -371,8 +371,26 @@
     <nav class="navbar navbar-expand-lg navbar-dark mb-4">
         <div class="container">
             <a class="navbar-brand" href="/">
-                <i class="fas fa-magic me-2"></i>AI Image Editor Pro
+                <i class="fas fa-wand-magic-sparkles me-2"></i>
+                Image Editor
             </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/">
+                            <i class="fas fa-home me-1"></i> Home
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/gallery">
+                            <i class="fas fa-images me-1"></i> Gallery
+                        </a>
+                    </li>
+                </ul>
+            </div>
         </div>
     </nav>
 
@@ -458,6 +476,24 @@
                         </div>
                         {% endif %}
                         
+                        {% if supabase_original_url or supabase_edited_url %}
+                        <div class="supabase-info mt-3">
+                            <h6><i class="fas fa-cloud me-2"></i>Cloud Storage Links:</h6>
+                            {% if supabase_edited_url %}
+                            <div class="d-flex align-items-center mb-2">
+                                <span class="badge bg-primary me-2">Edited</span>
+                                <a href="{{ supabase_edited_url }}" target="_blank" class="text-truncate">{{ supabase_edited_url }}</a>
+                            </div>
+                            {% endif %}
+                            {% if supabase_original_url %}
+                            <div class="d-flex align-items-center">
+                                <span class="badge bg-secondary me-2">Original</span>
+                                <a href="{{ supabase_original_url }}" target="_blank" class="text-truncate">{{ supabase_original_url }}</a>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        
                         <div class="prompt-container">
                             <h5 class="card-title">Continue Editing</h5>
                             <form method="POST" enctype="multipart/form-data" onsubmit="showLoading()" id="continue-edit-form">
@@ -517,7 +553,7 @@
 
     <footer class="text-center">
         <div class="container">
-            <p>Powered by Google Gemini AI</p>
+            <p>Powered by Google Gemini AI | Images stored with <a href="https://supabase.com" target="_blank">Supabase</a></p>
         </div>
     </footer>
 

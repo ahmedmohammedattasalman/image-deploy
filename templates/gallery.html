@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Gallery - Supabase Storage</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #4361ee;
+            --secondary-color: #3f37c9;
+            --accent-color: #4895ef;
+            --light-color: #f8f9fa;
+            --dark-color: #212529;
+            --success-color: #4cc9f0;
+            --border-radius: 12px;
+        }
+        
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--dark-color);
+        }
+        
+        .navbar {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .navbar-brand {
+            font-weight: bold;
+            color: white !important;
+        }
+        
+        .card {
+            border-radius: var(--border-radius);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+            transition: transform 0.3s;
+            margin-bottom: 20px;
+            border: none;
+            overflow: hidden;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        }
+        
+        .btn-primary {
+            background: var(--primary-color);
+            border: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s;
+            border-radius: 30px;
+            padding: 10px 20px;
+        }
+        
+        .btn-primary:hover {
+            background: var(--secondary-color);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+        }
+        
+        .gallery-heading {
+            color: var(--primary-color);
+            font-weight: bold;
+            margin-bottom: 30px;
+            text-align: center;
+            position: relative;
+        }
+        
+        .gallery-heading::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 50px;
+            height: 4px;
+            background: var(--accent-color);
+            border-radius: 2px;
+        }
+        
+        .gallery-item {
+            position: relative;
+            border-radius: var(--border-radius);
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .gallery-item img {
+            width: 100%;
+            height: 250px;
+            object-fit: cover;
+            transition: transform 0.5s;
+        }
+        
+        .gallery-item:hover img {
+            transform: scale(1.05);
+        }
+        
+        .image-type-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 10;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        
+        .badge-original {
+            background-color: var(--secondary-color);
+            color: white;
+        }
+        
+        .badge-edited {
+            background-color: var(--success-color);
+            color: white;
+        }
+        
+        .gallery-item-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            transform: translateY(100%);
+            transition: transform 0.3s;
+        }
+        
+        .gallery-item:hover .gallery-item-overlay {
+            transform: translateY(0);
+        }
+        
+        .gallery-item-actions {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            display: flex;
+            gap: 10px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .gallery-item:hover .gallery-item-actions {
+            opacity: 1;
+        }
+        
+        .gallery-action-btn {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.9);
+            color: var(--dark-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+        
+        .gallery-action-btn:hover {
+            background: white;
+            transform: scale(1.1);
+        }
+        
+        .img-comp-container {
+            position: relative;
+            height: 250px;
+            overflow: hidden;
+            border-radius: var(--border-radius);
+        }
+        
+        .img-comp-img {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        
+        .img-comp-img img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .img-comp-slider {
+            position: absolute;
+            z-index: 9;
+            width: 40px;
+            height: 40px;
+            background-color: var(--primary-color);
+            opacity: 0.7;
+            border-radius: 50%;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+            border: 2px solid #fff;
+            cursor: ew-resize;
+        }
+        
+        .comparison-link {
+            display: block;
+            text-decoration: none;
+            color: inherit;
+        }
+        
+        .comparison-link:hover {
+            color: inherit;
+        }
+        
+        .empty-gallery {
+            text-align: center;
+            padding: 50px 20px;
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+        }
+        
+        .empty-gallery i {
+            font-size: 50px;
+            color: #d1d1d1;
+            margin-bottom: 20px;
+        }
+        
+        .empty-gallery h5 {
+            color: var(--secondary-color);
+            margin-bottom: 10px;
+        }
+        
+        .date-label {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-wand-magic-sparkles me-2"></i>
+                Image Editor
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">
+                            <i class="fas fa-home me-1"></i> Home
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/gallery">
+                            <i class="fas fa-images me-1"></i> Gallery
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h2 class="gallery-heading">
+            <i class="fas fa-images me-2"></i>
+            Supabase Image Gallery
+        </h2>
+        
+        {% if error %}
+        <div class="alert alert-danger">
+            <strong>Error:</strong> {{ error }}
+        </div>
+        {% endif %}
+        
+        <div class="row">
+            {% if image_pairs and image_pairs|length > 0 %}
+                {% for pair in image_pairs %}
+                    <div class="col-md-6 col-lg-4 mb-4">
+                        <div class="card h-100">
+                            {% if pair.original and pair.edited %}
+                                <!-- Before/After comparison view -->
+                                <div class="img-comp-container" id="comparison-{{ loop.index }}">
+                                    <div class="img-comp-img">
+                                        <span class="image-type-badge badge-edited">After</span>
+                                        <img src="{{ pair.edited.url }}" alt="Edited Image">
+                                    </div>
+                                    <div class="img-comp-img img-comp-overlay" style="width: 50%;">
+                                        <span class="image-type-badge badge-original">Before</span>
+                                        <img src="{{ pair.original.url }}" alt="Original Image">
+                                    </div>
+                                    <div class="img-comp-slider" style="left: 50%;">
+                                        <i class="fas fa-arrows-alt-h"></i>
+                                    </div>
+                                </div>
+                            {% elif pair.original %}
+                                <!-- Original image only -->
+                                <div class="gallery-item">
+                                    <span class="image-type-badge badge-original">Original</span>
+                                    <img src="{{ pair.original.url }}" alt="Original Image">
+                                    <div class="gallery-item-actions">
+                                        <a href="{{ pair.original.url }}" class="gallery-action-btn" download>
+                                            <i class="fas fa-download"></i>
+                                        </a>
+                                        <a href="{{ pair.original.url }}" class="gallery-action-btn" target="_blank">
+                                            <i class="fas fa-external-link-alt"></i>
+                                        </a>
+                                    </div>
+                                </div>
+                            {% elif pair.edited %}
+                                <!-- Edited image only -->
+                                <div class="gallery-item">
+                                    <span class="image-type-badge badge-edited">Edited</span>
+                                    <img src="{{ pair.edited.url }}" alt="Edited Image">
+                                    <div class="gallery-item-actions">
+                                        <a href="{{ pair.edited.url }}" class="gallery-action-btn" download>
+                                            <i class="fas fa-download"></i>
+                                        </a>
+                                        <a href="{{ pair.edited.url }}" class="gallery-action-btn" target="_blank">
+                                            <i class="fas fa-external-link-alt"></i>
+                                        </a>
+                                    </div>
+                                </div>
+                            {% endif %}
+                            
+                            <div class="card-body">
+                                <h5 class="card-title">
+                                    {% if pair.original and pair.edited %}
+                                        Before & After Comparison
+                                    {% elif pair.original %}
+                                        Original Image
+                                    {% elif pair.edited %}
+                                        Edited Image
+                                    {% endif %}
+                                </h5>
+                                
+                                <div class="date-label">
+                                    {% if pair.original and pair.original.created_at %}
+                                        Original uploaded: {{ pair.original.created_at.split('T')[0] }} {{ pair.original.created_at.split('T')[1].split('.')[0] }}
+                                    {% endif %}
+                                    
+                                    {% if pair.edited and pair.edited.created_at %}
+                                        <br>
+                                        Edited created: {{ pair.edited.created_at.split('T')[0] }} {{ pair.edited.created_at.split('T')[1].split('.')[0] }}
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="mt-3">
+                                    {% if pair.original and pair.edited %}
+                                        <div class="btn-group w-100">
+                                            <a href="{{ pair.original.url }}" class="btn btn-sm btn-outline-primary" download>
+                                                <i class="fas fa-download me-1"></i> Original
+                                            </a>
+                                            <a href="{{ pair.edited.url }}" class="btn btn-sm btn-outline-success" download>
+                                                <i class="fas fa-download me-1"></i> Edited
+                                            </a>
+                                        </div>
+                                    {% elif pair.original %}
+                                        <a href="{{ pair.original.url }}" class="btn btn-sm btn-primary w-100" download>
+                                            <i class="fas fa-download me-1"></i> Download
+                                        </a>
+                                    {% elif pair.edited %}
+                                        <a href="{{ pair.edited.url }}" class="btn btn-sm btn-primary w-100" download>
+                                            <i class="fas fa-download me-1"></i> Download
+                                        </a>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <div class="col-12">
+                    <div class="empty-gallery">
+                        <i class="fas fa-images"></i>
+                        <h5>Your gallery is empty</h5>
+                        <p>No images found in Supabase storage</p>
+                        <a href="/" class="btn btn-primary mt-3">
+                            <i class="fas fa-plus me-2"></i>Add Images
+                        </a>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <footer class="text-center mt-5 py-3">
+        <div class="container">
+            <p>Powered by Google Gemini AI | Images stored with <a href="https://supabase.com" target="_blank">Supabase</a></p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Initialize image comparison sliders
+        document.addEventListener('DOMContentLoaded', function() {
+            // Find all comparison containers
+            const compContainers = document.querySelectorAll('.img-comp-container');
+            
+            compContainers.forEach(function(container) {
+                initComparisonSlider(container);
+            });
+            
+            function initComparisonSlider(container) {
+                const slider = container.querySelector('.img-comp-slider');
+                const overlayImg = container.querySelector('.img-comp-overlay');
+                
+                if (!slider || !overlayImg) return;
+                
+                let isDragging = false;
+                let startX;
+                
+                // Set initial width (50%)
+                overlayImg.style.width = '50%';
+                slider.style.left = '50%';
+                
+                // Touch/mouse events for slider
+                slider.addEventListener('mousedown', startSliding);
+                slider.addEventListener('touchstart', startSliding);
+                
+                container.addEventListener('mousemove', slide);
+                container.addEventListener('touchmove', slide);
+                
+                window.addEventListener('mouseup', stopSliding);
+                window.addEventListener('touchend', stopSliding);
+                
+                // Click anywhere on the container to set slider position
+                container.addEventListener('click', function(e) {
+                    if (e.target === slider) return;
+                    
+                    const rect = container.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const containerWidth = container.offsetWidth;
+                    
+                    const percentage = Math.max(0, Math.min(100, (x / containerWidth) * 100));
+                    
+                    overlayImg.style.width = percentage + '%';
+                    slider.style.left = percentage + '%';
+                });
+                
+                function startSliding(e) {
+                    e.preventDefault();
+                    isDragging = true;
+                    
+                    // Get starting cursor position
+                    startX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
+                }
+                
+                function slide(e) {
+                    if (!isDragging) return;
+                    e.preventDefault();
+                    
+                    const x = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
+                    const containerRect = container.getBoundingClientRect();
+                    const containerWidth = containerRect.width;
+                    
+                    // Calculate the position as a percentage of container width
+                    let pos = ((x - containerRect.left) / containerWidth) * 100;
+                    pos = Math.max(0, Math.min(100, pos)); // Constrain between 0-100%
+                    
+                    // Update position
+                    overlayImg.style.width = pos + '%';
+                    slider.style.left = pos + '%';
+                }
+                
+                function stopSliding() {
+                    isDragging = false;
+                }
+            }
+        });
+    </script>
+</body>
+</html> 
