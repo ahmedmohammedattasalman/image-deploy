@@ -483,7 +483,7 @@
                                 
                                 <!-- Remove any text that might be appearing here -->
                                 <div class="image-preview-wrapper" style="max-height: 300px; overflow: hidden; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);">
-                                    <img id="image-preview" src="#" alt="Preview" style="width: 100%; max-height: 300px; object-fit: contain;">
+                                    <img id="image-preview" src="#" alt="" style="width: 100%; max-height: 300px; object-fit: contain;">
                                 </div>
                                 
                                 <!-- Add comparison container that will show after edit -->
@@ -610,13 +610,13 @@
                                 <div class="card-body">
                                     <p class="card-text text-muted small mb-2">
                                         <i class="fas fa-lightbulb me-1 text-warning"></i> 
-                                        You can continue refining your image with additional edits. Each edit builds on the previous result.
+                                        {{ texts.continue_info }}
                                     </p>
                                     
                                     <!-- Edit history section -->
                                     {% if previous_prompts %}
                                     <div class="edit-history mb-3">
-                                        <p class="small fw-bold mb-1"><i class="fas fa-history me-1"></i> Edit History:</p>
+                                        <p class="small fw-bold mb-1"><i class="fas fa-history me-1"></i> {{ texts.edit_history }}:</p>
                                         <ol class="small ps-3 text-muted">
                                             {% for prev_prompt in previous_prompts %}
                                             <li>{{ prev_prompt }}</li>
@@ -657,7 +657,7 @@
                 
                 <div class="loading" id="loading-indicator">
                     <div class="spinner-border" role="status">
-                        <span class="visually-hidden">Loading...</span>
+                        <span class="visually-hidden">{{ texts.loading }}</span>
                     </div>
                     <p class="mt-2">{{ texts.processing }}</p>
                 </div>
@@ -690,6 +690,37 @@
         // Store the page direction for JavaScript use
         const pageDir = document.documentElement.dir || 'ltr';
         const isRTL = pageDir === 'rtl';
+        
+        // Store translations for JavaScript use
+        const jsTranslations = {
+            "continue_editing": "{{ texts.continue_editing }}",
+            "apply_next": "{{ texts.apply_next }}"
+        };
+        
+        // Function to translate UI text that might be added dynamically
+        function translateUIElements() {
+            // Get all buttons on the page
+            const allButtons = document.querySelectorAll('button');
+            
+            // Look for buttons with specific English text
+            allButtons.forEach(button => {
+                if (button.innerText.includes('Continue Editing')) {
+                    button.innerHTML = button.innerHTML.replace('Continue Editing', jsTranslations.continue_editing);
+                }
+            });
+            
+            // Check for any standalone elements (like in the screenshot)
+            const standaloneButton = document.querySelector('.btn-success');
+            if (standaloneButton && standaloneButton.innerText.includes('Continue Editing')) {
+                standaloneButton.innerHTML = standaloneButton.innerHTML.replace('Continue Editing', jsTranslations.continue_editing);
+            }
+        }
+        
+        // Run on page load and again after 1 second to catch any dynamically added elements
+        document.addEventListener('DOMContentLoaded', function() {
+            translateUIElements();
+            setTimeout(translateUIElements, 1000);
+        });
         
         // Image comparison slider with RTL support
         function initComparisonSlider() {
@@ -1006,6 +1037,7 @@
 
         // Initialize on document load
         document.addEventListener('DOMContentLoaded', function() {
+            // Initialize components
             setupDragAndDrop();
             initComparisonSlider();
             setupSliderContainerEvents();
@@ -1015,8 +1047,29 @@
             setupFormSubmissions();
             setupRetryButton();
             
+            // Apply translations to any dynamic elements
+            applyTranslations();
+            
             // Special handling for continue edit section
             initializeContinueEditButtons();
+            
+            // Function to apply translations to dynamic elements
+            function applyTranslations() {
+                const htmlLang = document.documentElement.lang;
+                const isArabic = htmlLang === 'ar';
+                
+                // Update any elements that need translations applied
+                const continueButtons = document.querySelectorAll('[data-editing-mode="continue"]');
+                
+                continueButtons.forEach(button => {
+                    // Update continue editing buttons with proper translations
+                    if (isArabic) {
+                        button.innerHTML = '<i class="fas fa-edit me-2"></i>{{ texts.continue_editing }}';
+                    } else {
+                        button.innerHTML = '<i class="fas fa-edit me-2"></i>{{ texts.continue_editing }}';
+                    }
+                });
+            }
             
             // Function to initialize quick edit buttons in the continue editing section
             function initializeContinueEditButtons() {
@@ -1103,13 +1156,13 @@
                 if (generateBtn) {
                     generateBtn.disabled = false;
                     generateBtn.title = '';
-                    generateBtn.innerHTML = '<i class="fas fa-magic me-2"></i>Continue Editing';
+                    generateBtn.innerHTML = '<i class="fas fa-edit me-2"></i>{{ texts.continue_editing }}';
                     generateBtn.setAttribute('data-editing-mode', 'continue');
                 }
             } else if (generateBtn && fileInput && (!fileInput.files || fileInput.files.length === 0)) {
                 // Only disable if we're not in continue mode and no file is selected
                 generateBtn.disabled = true;
-                generateBtn.title = 'Please select an image file first';
+                generateBtn.title = '{{ texts.select_image_first }}';
             }
         });
         
@@ -1126,6 +1179,10 @@
             const downloadButton = document.getElementById('download-edit-btn');
             const promptTextarea = document.querySelector('textarea[name="prompt"]');
             const imagePreview = document.getElementById('image-preview');
+            
+            // Get current language
+            const htmlLang = document.documentElement.lang;
+            const isArabic = htmlLang === 'ar';
             
             if (!generateButton || !previewContainer) return;
             
@@ -1145,7 +1202,7 @@
                 
                 // Update the button text to indicate we're continuing the edit
                 if (generateButton) {
-                    generateButton.innerHTML = '<i class="fas fa-edit me-2"></i>Continue Editing';
+                    generateButton.innerHTML = '<i class="fas fa-edit me-2"></i>{{ texts.continue_editing }}';
                     generateButton.classList.add('btn-success');
                     generateButton.classList.remove('btn-primary');
                     generateButton.setAttribute('data-editing-mode', 'continue');
@@ -1157,7 +1214,7 @@
                     promptTextarea.focus();
                     
                     if (promptTextarea.value === '') {
-                        promptTextarea.placeholder = "Describe how to further edit the image. For example: 'Now make it black and white' or 'Add a vintage filter'";
+                        promptTextarea.placeholder = "{{ texts.continue_prompt }}";
                     }
                 }
             } else {
@@ -1333,7 +1390,7 @@
                 if (generateButton) {
                     generateButton.disabled = false;
                     generateButton.title = '';
-                    generateButton.innerHTML = '<i class="fas fa-edit me-2"></i>Continue Editing';
+                    generateButton.innerHTML = '<i class="fas fa-edit me-2"></i>{{ texts.continue_editing }}';
                     generateButton.classList.add('btn-success');
                     generateButton.classList.remove('btn-primary');
                     generateButton.setAttribute('data-editing-mode', 'continue');
@@ -1344,7 +1401,7 @@
                         promptTextarea.focus();
                         
                         if (promptTextarea.value === '') {
-                            promptTextarea.placeholder = "Describe how to further edit the image. For example: 'Now make it black and white' or 'Add a vintage filter'";
+                            promptTextarea.placeholder = "{{ texts.continue_prompt }}";
                         }
                     }
                 }
@@ -1684,7 +1741,7 @@
                 
                 // Update generate button to continue editing mode
                 if (generateButton) {
-                    generateButton.innerHTML = '<i class="fas fa-edit me-2"></i>Continue Editing';
+                    generateButton.innerHTML = '<i class="fas fa-edit me-2"></i>{{ texts.continue_editing }}';
                     generateButton.classList.add('btn-success');
                     generateButton.classList.remove('btn-primary');
                     generateButton.setAttribute('data-editing-mode', 'continue');
@@ -1702,7 +1759,7 @@
                     promptTextarea.focus();
                     
                     if (promptTextarea.value === '') {
-                        promptTextarea.placeholder = "Describe how to further edit the image. For example: 'Now make it black and white' or 'Add a vintage filter'";
+                        promptTextarea.placeholder = "{{ texts.continue_prompt }}";
                     }
                 }
                 

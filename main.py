@@ -54,7 +54,11 @@ TRANSLATIONS = {
         "vintage_edit": "Vintage",
         "painting_edit": "Painting",
         "vignette_edit": "Vignette",
-        "contrast_edit": "Contrast"
+        "contrast_edit": "Contrast",
+        "select_image_first": "Please select an image first",
+        "continue_info": "You can continue refining your image with additional edits. Each edit builds on the previous result.",
+        "edit_history": "Edit History",
+        "loading": "Loading..."
     },
     "ar": {
         "app_name": "محرر الصور",
@@ -87,7 +91,11 @@ TRANSLATIONS = {
         "vintage_edit": "قديم",
         "painting_edit": "لوحة",
         "vignette_edit": "فنييت",
-        "contrast_edit": "تباين"
+        "contrast_edit": "تباين",
+        "select_image_first": "يرجى اختيار صورة أولاً",
+        "continue_info": "يمكنك متابعة تحسين صورتك بتعديلات إضافية. كل تعديل يبني على النتيجة السابقة.",
+        "edit_history": "سجل التعديلات",
+        "loading": "جاري التحميل..."
     }
 }
 
