@@ -408,7 +408,8 @@ def index():
             
             prompt = request.form['prompt']
             
-            # Check if this is a continued edit
+            # Check if this is a continued edit - we'll handle both from the same form
+            # It will be 'true' if we're continuing an edit from a previous result
             continue_edit = request.form.get('continue_edit') == 'true'
             
             # Initialize previous prompts list

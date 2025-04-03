@@ -539,9 +539,6 @@
                                 <button type="submit" class="btn btn-primary w-100 mt-3" id="generate-btn">
                                     <i class="fas fa-magic me-2"></i>{{ texts.generate_button }}
                                 </button>
-                                <button type="submit" class="btn btn-primary w-100 mt-3" id="continue-btn" style="display: none;">
-                                    <i class="fas fa-edit me-2"></i>Continue Editing
-                                </button>
                                 <input type="hidden" name="continue_edit" id="continue-edit-input" value="false">
                                 <input type="hidden" name="previous_result_b64" id="previous-result-b64" value="{{ result_image_b64 if result_image_b64 else '' }}">
                                 <input type="hidden" name="original_image_b64" id="original-image-b64" value="{{ original_image_b64 if original_image_b64 else '' }}">
@@ -1038,7 +1035,6 @@
         function setupEditPreviewHandlers() {
             // Get elements
             const generateButton = document.getElementById('generate-btn');
-            const continueButton = document.getElementById('continue-btn');
             const continueEditInput = document.getElementById('continue-edit-input');
             const previewContainer = document.getElementById('image-preview-container');
             const comparisonContainer = document.getElementById('image-comparison-container');
@@ -1052,11 +1048,11 @@
             
             if (!generateButton || !previewContainer) return;
             
-            // Check if we need to show the continue button (if there's already a comparison active)
+            // Check if we need to indicate this is a continued edit
             if (comparisonContainer && comparisonContainer.style.display === 'block' && editedPreview && editedPreview.src) {
-                generateButton.style.display = 'none';
-                continueButton.style.display = 'block';
-                continueEditInput.value = 'true';
+                if (continueEditInput) {
+                    continueEditInput.value = 'true';
+                }
             }
             
             // Handle generate button click
@@ -1090,12 +1086,17 @@
                         document.getElementById('file-name').textContent = '';
                     }
                     
+                    // Reset continue_edit flag
+                    if (continueEditInput) {
+                        continueEditInput.value = 'false';
+                    }
+                    
                     // Redirect to the home page to start fresh
                     window.location.href = '/';
                 });
             }
             
-            // Handle continue edit button
+            // Handle continue edit button (the secondary one in the comparison view)
             if (continueEditButton) {
                 continueEditButton.addEventListener('click', function() {
                     // Scroll to the prompt input
@@ -1112,11 +1113,8 @@
                             }
                         }
                         
-                        // Change the generate button text to "Continue Editing" and show it
-                        if (generateButton && continueButton) {
-                            generateButton.innerHTML = '<i class="fas fa-edit me-2"></i>Continue Editing';
-                            generateButton.style.display = 'block';
-                            continueButton.style.display = 'none';
+                        // Set continue edit flag
+                        if (continueEditInput) {
                             continueEditInput.value = 'true';
                         }
                     }
@@ -1210,7 +1208,6 @@
             const editedPreview = document.getElementById('edited-preview');
             const originalPreview = document.getElementById('original-preview');
             const generateButton = document.getElementById('generate-btn');
-            const continueButton = document.getElementById('continue-btn');
             const continueEditInput = document.getElementById('continue-edit-input');
             const previousResultInput = document.getElementById('previous-result-b64');
             const originalImageInput = document.getElementById('original-image-b64');
@@ -1219,13 +1216,9 @@
                 editedPreview.src = editedImageSrc;
                 comparisonContainer.style.display = 'block';
                 
-                // Switch the buttons
-                if (generateButton && continueButton) {
-                    generateButton.style.display = 'none';
-                    continueButton.style.display = 'block';
-                    if (continueEditInput) {
-                        continueEditInput.value = 'true';
-                    }
+                // Update hidden fields to indicate we're continuing an edit
+                if (continueEditInput) {
+                    continueEditInput.value = 'true';
                 }
                 
                 // Update hidden fields for continued editing with aggressive compression
@@ -1406,7 +1399,9 @@
                 mainForm.addEventListener('submit', async function(e) {
                     // Check if we're continuing an edit (has hidden fields)
                     const continueEdit = document.getElementById('continue-edit-input');
-                    if (continueEdit && continueEdit.value === 'true') {
+                    const previousResultInput = document.getElementById('previous-result-b64');
+                    
+                    if (continueEdit && continueEdit.value === 'true' && previousResultInput && previousResultInput.value) {
                         e.preventDefault();
                         
                         // Show loading indicator
@@ -1467,18 +1462,12 @@
                 // Get form elements
                 const form = document.getElementById('upload-form');
                 const generateBtn = document.getElementById('generate-btn');
-                const continueBtn = document.getElementById('continue-btn');
                 
-                // Determine which button to use and click it
-                if (continueBtn && continueBtn.style.display !== 'none') {
-                    continueBtn.click();
+                // Either submit the form or click the button
+                if (form) {
+                    form.submit();
                 } else if (generateBtn) {
-                    // Either submit the form or click the button
-                    if (form) {
-                        form.submit();
-                    } else {
-                        generateBtn.click();
-                    }
+                    generateBtn.click();
                 }
             });
         }
