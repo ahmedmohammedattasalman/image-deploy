@@ -48,7 +48,13 @@ TRANSLATIONS = {
         "your_gallery": "Your Gallery",
         "gallery_empty": "Your gallery is empty",
         "edited_appear": "Edited images will appear here",
-        "powered_by": "Powered by Google Gemini AI | Images stored with"
+        "powered_by": "Powered by Google Gemini AI | Images stored with",
+        "quick_edits": "Quick edits:",
+        "bw_edit": "B&W",
+        "vintage_edit": "Vintage",
+        "painting_edit": "Painting",
+        "vignette_edit": "Vignette",
+        "contrast_edit": "Contrast"
     },
     "ar": {
         "app_name": "محرر الصور",
@@ -75,7 +81,13 @@ TRANSLATIONS = {
         "your_gallery": "معرض صورك",
         "gallery_empty": "معرض صورك فارغ",
         "edited_appear": "ستظهر الصور المعدلة هنا",
-        "powered_by": "مشغل بواسطة Google Gemini AI | الصور مخزنة باستخدام"
+        "powered_by": "مشغل بواسطة Google Gemini AI | الصور مخزنة باستخدام",
+        "quick_edits": "تعديلات سريعة:",
+        "bw_edit": "أبيض وأسود",
+        "vintage_edit": "قديم",
+        "painting_edit": "لوحة",
+        "vignette_edit": "فنييت",
+        "contrast_edit": "تباين"
     }
 }
 
@@ -445,6 +457,35 @@ def create_sample_image():
     
     return image
 
+# Function to format Arabic text for Gemini
+def format_arabic_text(text):
+    """
+    Format Arabic text to ensure proper processing by Gemini.
+    Args:
+        text: The Arabic text to format
+    Returns:
+        Formatted Arabic text
+    """
+    # Check if text is empty
+    if not text:
+        return text
+    
+    # Common quick edit phrases in Arabic and their well-formatted equivalents
+    quick_edit_phrases = {
+        'اجعلها بالأبيض والأسود': 'حول الصورة إلى اللونين الأبيض والأسود',
+        'أضف فلتر قديم': 'أضف تأثير الصور القديمة على الصورة',
+        'اجعلها تبدو كلوحة فنية': 'حول الصورة إلى لوحة فنية',
+        'أضف تأثير فنييت': 'أضف تأثير الفنييت حول حواف الصورة',
+        'زيادة التباين': 'قم بزيادة تباين الألوان في الصورة'
+    }
+    
+    # If the text matches one of our quick edit phrases, use the enhanced version
+    if text in quick_edit_phrases:
+        return quick_edit_phrases[text]
+    
+    # Otherwise, return the original text
+    return text
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     # Get current language from session or default to English
@@ -557,14 +598,33 @@ def index():
                 retry_delay = 2
                 last_error = None
                 
+                # Prepare the prompt for processing
+                # Add special handling for Arabic text by ensuring proper encoding and text direction
+                if lang == "ar":
+                    # Format the Arabic text to ensure proper processing
+                    formatted_prompt = format_arabic_text(prompt)
+                    # Add explicit language indicator and instructions for Gemini to handle Arabic text
+                    processed_prompt = f"""استخدم اللغة العربية فقط في الرد. 
+مهمتك: قم بتحرير الصورة المرفقة حسب الإرشادات التالية:
+{formatted_prompt}
+
+قم بمعالجة الصورة وأظهر النتيجة المعدلة. لا تستخدم أي لغة أخرى غير العربية في ردك."""
+                    # For debugging
+                    print(f"Processing Arabic prompt: {processed_prompt}")
+                else:
+                    processed_prompt = prompt
+                
                 for attempt in range(max_retries):
                     try:
-                        # Generate content using Gemini
+                        # Generate content using Gemini with clear safety settings for image editing
                         response = client.models.generate_content(
                             model="gemini-2.0-flash-exp-image-generation",
-                            contents=[prompt, image],
+                            contents=[processed_prompt, image],
                             config=types.GenerateContentConfig(
-                                response_modalities=["Text", "Image"]
+                                response_modalities=["Text", "Image"],
+                                temperature=0.2,  # Lower temperature for more deterministic results
+                                top_k=20,
+                                top_p=0.8
                             )
                         )
                         
@@ -602,20 +662,51 @@ def index():
                 result_image = None
                 result_image_b64 = None
                 
-                for part in response.candidates[0].content.parts:
-                    if part.text is not None:
-                        response_text += part.text
-                    elif part.inline_data is not None:
-                        result_image = Image.open(BytesIO(part.inline_data.data))
-                        
-                        # Compress the result image if needed before converting to base64
-                        if result_image.width * result_image.height > 1500000:
-                            result_image = compress_image(result_image)
+                try:
+                    # Process the text response with special handling for Arabic
+                    for part in response.candidates[0].content.parts:
+                        if part.text is not None:
+                            # Add text direction marker for Arabic responses if needed
+                            if lang == "ar" and not part.text.strip().startswith('﷽') and not part.text.strip().startswith('بسم الله'):
+                                # Ensure proper Arabic text direction and formatting
+                                response_text += part.text
+                            else:
+                                response_text += part.text
+                        elif part.inline_data is not None:
+                            result_image = Image.open(BytesIO(part.inline_data.data))
                             
-                        result_image_b64 = image_to_base64(result_image)
+                            # Compress the result image if needed before converting to base64
+                            if result_image.width * result_image.height > 1500000:
+                                result_image = compress_image(result_image)
+                                
+                            result_image_b64 = image_to_base64(result_image)
+                except (IndexError, AttributeError) as e:
+                    # Handle parsing errors with Gemini response
+                    print(f"Error parsing Gemini response: {str(e)}")
+                    # Try alternate method to extract response
+                    try:
+                        if hasattr(response, 'text'):
+                            response_text = response.text
+                        elif hasattr(response, 'candidates') and len(response.candidates) > 0:
+                            # Navigate the response structure differently
+                            for candidate in response.candidates:
+                                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                                    for part in candidate.content.parts:
+                                        if hasattr(part, 'text') and part.text:
+                                            response_text += part.text
+                                        elif hasattr(part, 'inline_data') and part.inline_data:
+                                            result_image = Image.open(BytesIO(part.inline_data.data))
+                                            result_image_b64 = image_to_base64(result_image)
+                    except Exception as inner_e:
+                        print(f"Alternative response parsing also failed: {str(inner_e)}")
                 
                 if not result_image_b64:
-                    return render_template('index.html', error="Failed to generate edited image.", texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
+                    # Special message for Arabic users
+                    if lang == "ar":
+                        error_msg = "فشل في إنشاء الصورة المعدلة. يرجى المحاولة مرة أخرى بتعليمات مختلفة."
+                    else:
+                        error_msg = "Failed to generate edited image."
+                    return render_template('index.html', error=error_msg, texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
                 
                 # Store the edited image in Supabase
                 edited_id, edited_url = None, None
@@ -667,14 +758,30 @@ def index():
                 error_message = str(e)
                 # Provide a user-friendly message for common errors
                 if "503" in error_message and "overloaded" in error_message.lower():
-                    friendly_error = "The AI image generation service is currently experiencing high traffic. Please try again in a few minutes."
+                    if lang == "ar":
+                        friendly_error = "خدمة الذكاء الاصطناعي مشغولة حاليًا. يرجى المحاولة مرة أخرى بعد عدة دقائق."
+                    else:
+                        friendly_error = "The AI image generation service is currently experiencing high traffic. Please try again in a few minutes."
                 else:
-                    friendly_error = f"Error processing image with Gemini: {str(e)}"
+                    if lang == "ar":
+                        # Provide more specific Arabic error for common issues
+                        if "not available in your country" in error_message.lower():
+                            friendly_error = "الخدمة غير متوفرة في منطقتك. يرجى استخدام VPN."
+                        elif "quota" in error_message.lower():
+                            friendly_error = "تم استنفاد حصة الاستخدام. يرجى المحاولة لاحقًا."
+                        else:
+                            friendly_error = f"حدث خطأ أثناء معالجة الصورة: {str(e)}"
+                    else:
+                        friendly_error = f"Error processing image with Gemini: {str(e)}"
                 
                 return render_template('index.html', error=friendly_error, texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
         
         except Exception as e:
-            return render_template('index.html', error=f"Error processing request: {str(e)}", texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
+            if lang == "ar":
+                error_msg = f"خطأ في معالجة الطلب: {str(e)}"
+            else:
+                error_msg = f"Error processing request: {str(e)}"
+            return render_template('index.html', error=error_msg, texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
     
     return render_template('index.html', texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
 

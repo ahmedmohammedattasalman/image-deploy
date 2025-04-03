@@ -524,12 +524,12 @@
                                 <div class="form-group">
                                     <!-- Quick edit suggestions -->
                                     <div class="d-flex flex-wrap gap-1 mb-2">
-                                        <small class="text-muted me-2 d-flex align-items-center">Quick edits:</small>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Make it black and white">B&W</button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Add a vintage filter">Vintage</button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Make it look like a painting">Painting</button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Add a vignette effect">Vignette</button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Increase contrast">Contrast</button>
+                                        <small class="text-muted me-2 d-flex align-items-center">{{ texts.quick_edits }}</small>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Make it black and white">{{ texts.bw_edit }}</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Add a vintage filter">{{ texts.vintage_edit }}</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Make it look like a painting">{{ texts.painting_edit }}</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Add a vignette effect">{{ texts.vignette_edit }}</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Increase contrast">{{ texts.contrast_edit }}</button>
                                     </div>
                                     <textarea class="form-control" name="prompt" rows="3" placeholder="{{ texts.prompt_placeholder }}" required></textarea>
                                 </div>
@@ -635,12 +635,12 @@
                                         <div class="form-group">
                                             <!-- Quick edit suggestions -->
                                             <div class="d-flex flex-wrap gap-1 mb-2">
-                                                <small class="text-muted me-2 d-flex align-items-center">Quick edits:</small>
-                                                <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Make it black and white">B&W</button>
-                                                <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Add a vintage filter">Vintage</button>
-                                                <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Make it look like a painting">Painting</button>
-                                                <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Add a vignette effect">Vignette</button>
-                                                <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Increase contrast">Contrast</button>
+                                                <small class="text-muted me-2 d-flex align-items-center">{{ texts.quick_edits }}</small>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Make it black and white">{{ texts.bw_edit }}</button>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Add a vintage filter">{{ texts.vintage_edit }}</button>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Make it look like a painting">{{ texts.painting_edit }}</button>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Add a vignette effect">{{ texts.vignette_edit }}</button>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Increase contrast">{{ texts.contrast_edit }}</button>
                                             </div>
                                             <textarea class="form-control border-primary" name="prompt" rows="3" placeholder="{{ texts.continue_prompt }}" required></textarea>
                                         </div>
@@ -1015,6 +1015,83 @@
             setupFormSubmissions();
             setupRetryButton();
             
+            // Special handling for continue edit section
+            initializeContinueEditButtons();
+            
+            // Function to initialize quick edit buttons in the continue editing section
+            function initializeContinueEditButtons() {
+                // Get all the quick edit buttons in continue edit section
+                const continueEditForm = document.getElementById('continue-edit-form');
+                if (!continueEditForm) return;
+                
+                const quickEditButtons = continueEditForm.querySelectorAll('.quick-edit-btn');
+                const textarea = continueEditForm.querySelector('textarea[name="prompt"]');
+                
+                // Ensure proper text direction for Arabic language
+                const htmlLang = document.documentElement.lang;
+                const isArabic = htmlLang === 'ar';
+                
+                // Set directionality for textarea
+                if (textarea) {
+                    if (isArabic) {
+                        textarea.setAttribute('dir', 'rtl');
+                    }
+                    
+                    // Add event listener for input to detect text direction
+                    textarea.addEventListener('input', function() {
+                        // Detect if input contains Arabic characters using regex
+                        const hasArabic = /[\u0600-\u06FF]/.test(this.value);
+                        if (hasArabic) {
+                            this.setAttribute('dir', 'rtl');
+                        } else {
+                            this.setAttribute('dir', 'ltr');
+                        }
+                    });
+                }
+                
+                // English and Arabic prompts for quick edit actions
+                const promptMap = {
+                    "en": {
+                        "B&W": "Make it black and white",
+                        "Vintage": "Add a vintage filter",
+                        "Painting": "Make it look like a painting",
+                        "Vignette": "Add a vignette effect",
+                        "Contrast": "Increase contrast"
+                    },
+                    "ar": {
+                        "أبيض وأسود": "اجعلها بالأبيض والأسود",
+                        "قديم": "أضف فلتر قديم",
+                        "لوحة": "اجعلها تبدو كلوحة فنية",
+                        "فنييت": "أضف تأثير فنييت",
+                        "تباين": "زيادة التباين"
+                    }
+                };
+                
+                quickEditButtons.forEach(button => {
+                    // Get the button label text
+                    const buttonText = button.textContent.trim();
+                    const lang = isArabic ? "ar" : "en";
+                    
+                    // Set the appropriate prompt based on language and button text
+                    if (promptMap[lang] && promptMap[lang][buttonText]) {
+                        button.setAttribute('data-prompt', promptMap[lang][buttonText]);
+                    }
+                    
+                    // Ensure the click event is properly handling Arabic text
+                    button.addEventListener('click', function() {
+                        const prompt = this.getAttribute('data-prompt');
+                        if (textarea && prompt) {
+                            textarea.value = prompt;
+                            textarea.focus();
+                            
+                            // Trigger input event to update directionality
+                            const inputEvent = new Event('input');
+                            textarea.dispatchEvent(inputEvent);
+                        }
+                    });
+                });
+            }
+            
             // Set initial button state
             const fileInput = document.getElementById('file');
             const generateBtn = document.getElementById('generate-btn');
@@ -1364,11 +1441,62 @@
             }
         });
 
-        // Handle quick edit suggestion buttons
+        // Handle quick edit suggestions and Arabic text input
         function setupQuickEditButtons() {
             const quickEditButtons = document.querySelectorAll('.quick-edit-btn');
+            const allTextAreas = document.querySelectorAll('textarea[name="prompt"]');
+            
+            // Ensure proper text direction for Arabic language
+            const htmlLang = document.documentElement.lang;
+            const isArabic = htmlLang === 'ar';
+            
+            // Set directionality for all prompt text areas
+            allTextAreas.forEach(textArea => {
+                // Add event listener for input to detect text direction
+                textArea.addEventListener('input', function() {
+                    // Detect if input contains Arabic characters using regex
+                    const hasArabic = /[\u0600-\u06FF]/.test(this.value);
+                    if (hasArabic) {
+                        this.setAttribute('dir', 'rtl');
+                    } else {
+                        this.setAttribute('dir', 'ltr');
+                    }
+                });
+                
+                // Set initial direction based on language
+                if (isArabic) {
+                    textArea.setAttribute('dir', 'rtl');
+                }
+            });
+            
+            // English and Arabic prompts for quick edit actions
+            const promptMap = {
+                "en": {
+                    "B&W": "Make it black and white",
+                    "Vintage": "Add a vintage filter",
+                    "Painting": "Make it look like a painting",
+                    "Vignette": "Add a vignette effect",
+                    "Contrast": "Increase contrast"
+                },
+                "ar": {
+                    "أبيض وأسود": "اجعلها بالأبيض والأسود",
+                    "قديم": "أضف فلتر قديم",
+                    "لوحة": "اجعلها تبدو كلوحة فنية",
+                    "فنييت": "أضف تأثير فنييت",
+                    "تباين": "زيادة التباين"
+                }
+            };
             
             quickEditButtons.forEach(button => {
+                // Get the button label text
+                const buttonText = button.textContent.trim();
+                const lang = isArabic ? "ar" : "en";
+                
+                // Set the appropriate prompt based on language and button text
+                if (promptMap[lang] && promptMap[lang][buttonText]) {
+                    button.setAttribute('data-prompt', promptMap[lang][buttonText]);
+                }
+                
                 button.addEventListener('click', function() {
                     const prompt = this.getAttribute('data-prompt');
                     const textArea = this.closest('.form-group').querySelector('textarea');
@@ -1376,6 +1504,10 @@
                     if (textArea) {
                         textArea.value = prompt;
                         textArea.focus();
+                        
+                        // Trigger input event to update directionality
+                        const inputEvent = new Event('input');
+                        textArea.dispatchEvent(inputEvent);
                     }
                 });
             });
