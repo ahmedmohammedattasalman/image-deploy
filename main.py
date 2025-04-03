@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 import requests
 import random
 import json
+from werkzeug.exceptions import RequestEntityTooLarge
 
 # Load environment variables
 load_dotenv()
@@ -117,9 +118,9 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
 # Initialize Flask app
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024  # 64MB max upload size
+app.config['MAX_CONTENT_LENGTH'] = 150 * 1024 * 1024  # 150MB max upload size
 app.config['SERVER_NAME'] = None  # Prevent issues with request handling
-app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024  # Set explicitly to 64MB
+app.config['UPLOAD_FOLDER'] = TEMP_FOLDER  # Explicit temp folder for uploads
 app.config['SESSION_TYPE'] = 'filesystem'  # For session storage
 app.secret_key = 'image_enhancement_secret_key'  # Secret key for session
 
@@ -147,18 +148,34 @@ def base64_to_image(base64_str):
     if 'base64,' in base64_str:
         base64_str = base64_str.split('base64,')[1]
     
+    # Handle potential padding issues
+    missing_padding = len(base64_str) % 4
+    if missing_padding:
+        base64_str += '=' * (4 - missing_padding)
+    
     # Decode base64 to binary
-    img_data = base64.b64decode(base64_str)
-    img = Image.open(BytesIO(img_data))
-    
-    # Compress large images automatically
-    if img.width * img.height > 1500000:  # Images larger than ~1.5 megapixels
-        return compress_image(img)
-    
-    return img
+    try:
+        img_data = base64.b64decode(base64_str)
+        
+        # Check if the image data is too large (>5MB)
+        if len(img_data) > 5 * 1024 * 1024:
+            print(f"Large image data detected: {len(img_data)/1024/1024:.2f}MB, applying aggressive compression")
+        
+        img = Image.open(BytesIO(img_data))
+        
+        # Compress the image regardless of size for consistent handling
+        max_size_mb = 1.0 if len(img_data) > 5 * 1024 * 1024 else 1.5
+        quality = 50 if len(img_data) > 5 * 1024 * 1024 else 60
+        
+        return compress_image(img, max_size_mb=max_size_mb, quality=quality)
+        
+    except Exception as e:
+        print(f"Error decoding base64 image: {str(e)}")
+        # Return a placeholder image or raise the error
+        raise ValueError(f"Failed to decode base64 image: {str(e)}")
 
 # Function to compress and resize large images
-def compress_image(image, max_size_mb=3, quality=80):
+def compress_image(image, max_size_mb=1.5, quality=60):
     """
     Compress and resize image to reduce its size
     
@@ -176,7 +193,7 @@ def compress_image(image, max_size_mb=3, quality=80):
     
     # Start with original size
     width, height = image.size
-    max_pixels = 1800  # Maximum dimension for any side - reduced from 2000
+    max_pixels = 1200  # Maximum dimension for any side - reduced from 1500
     
     # First resize if necessary to keep dimensions reasonable
     if width > max_pixels or height > max_pixels:
@@ -197,38 +214,71 @@ def compress_image(image, max_size_mb=3, quality=80):
     # If still too large, reduce quality iteratively and maybe resize further
     if img_size_mb > max_size_mb:
         # If quality is already quite low but file is still large, reduce dimensions further
-        if quality < 60:
-            # Reduce dimensions by 25%
-            new_width = int(image.width * 0.75)
-            new_height = int(image.height * 0.75)
+        if quality < 45:
+            # Reduce dimensions by 50%
+            new_width = int(image.width * 0.5)
+            new_height = int(image.height * 0.5)
             image = image.resize((new_width, new_height), Image.LANCZOS)
             # Try again with reduced size but reset quality
-            return compress_image(image, max_size_mb, 75)
+            return compress_image(image, max_size_mb, 60)
         else:
             # Try with lower quality first
-            return compress_image(image, max_size_mb, max(40, quality-15))
+            return compress_image(image, max_size_mb, max(30, quality-25))
     
     # Return compressed image
     buffered.seek(0)
     return Image.open(buffered)
 
 # Helper to convert image to base64
-def image_to_base64(img, format="PNG", quality=85):
+def image_to_base64(img, format="PNG", quality=60):
     buffered = BytesIO()
     
     # Compress large images to JPEG with specified quality
-    if img.width * img.height > 1000000:  # For images over ~1 megapixel
+    if img.width * img.height > 500000:  # Images larger than ~0.5 megapixels (reduced threshold)
         # Convert to RGB if necessary for JPEG
         if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
             bg = Image.new('RGB', img.size, (255, 255, 255))
             bg.paste(img, mask=img.split()[3] if img.mode == 'RGBA' else None)
             img = bg
         
+        # If the image is very large, resize it before base64 encoding
+        if img.width * img.height > 1000000:  # > 1MP
+            max_dim = 1000
+            if img.width > img.height:
+                new_width = max_dim
+                new_height = int(img.height * (max_dim / img.width))
+            else:
+                new_height = max_dim
+                new_width = int(img.width * (max_dim / img.height))
+            
+            img = img.resize((new_width, new_height), Image.LANCZOS)
+        
         format = "JPEG"
         img.save(buffered, format=format, quality=quality, optimize=True)
     else:
-        # For smaller images, keep the PNG format for better quality
-        img.save(buffered, format="PNG")
+        # For smaller images, keep the PNG format for better quality but still optimize
+        img.save(buffered, format="PNG", optimize=True, compress_level=9)
+    
+    # Get the buffer size
+    buffer_size = len(buffered.getvalue()) / (1024 * 1024)  # Size in MB
+    
+    # If the buffer is still too large, compress further
+    if buffer_size > 3.0:
+        # Reset the buffer
+        buffered.close()
+        buffered = BytesIO()
+        
+        # Convert to JPEG with lower quality
+        if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+            bg = Image.new('RGB', img.size, (255, 255, 255))
+            bg.paste(img, mask=img.split()[3] if img.mode == 'RGBA' else None)
+            img = bg
+        
+        # Resize image to half size if it's still too large
+        if img.width * img.height > 800000:
+            img = img.resize((img.width // 2, img.height // 2), Image.LANCZOS)
+        
+        img.save(buffered, format="JPEG", quality=50, optimize=True)
     
     return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
@@ -431,22 +481,33 @@ def index():
                     return render_template('index.html', error="Previous result not found. Please start with a new image.", texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
                 
                 try:
-                    # Convert base64 to image for processing and compress large images
-                    image = base64_to_image(prev_result_b64)
+                    # Save the base64 image to a temporary file to avoid memory issues
+                    img_id = str(uuid.uuid4())
+                    prev_img_path = os.path.join(TEMP_FOLDER, f"prev_{img_id}.jpg")
+                    orig_img_path = os.path.join(TEMP_FOLDER, f"orig_{img_id}.jpg")
                     
-                    # Save original image base64 for comparison (compress if needed)
-                    original_image_b64_raw = request.form.get('original_image_b64', prev_result_b64)
-                    original_img = base64_to_image(original_image_b64_raw)
-                    
-                    # Compress the images if they're too large
-                    if original_img.width * original_img.height > 1500000:
-                        original_img = compress_image(original_img)
-                    
-                    if image.width * image.height > 1500000:
-                        image = compress_image(image)
-                    
-                    # Convert to compressed base64
-                    original_image_b64 = image_to_base64(original_img)
+                    # Instead of keeping everything in memory, save to disk
+                    try:
+                        # Process previous result
+                        image = base64_to_image(prev_result_b64)
+                        image.save(prev_img_path, format="JPEG", quality=60, optimize=True)
+                        image = Image.open(prev_img_path)  # Reload from disk
+                        
+                        # Process original image
+                        original_image_b64_raw = request.form.get('original_image_b64', prev_result_b64)
+                        original_img = base64_to_image(original_image_b64_raw)
+                        original_img.save(orig_img_path, format="JPEG", quality=60, optimize=True)
+                        
+                        # Load the original image from disk and convert to base64 for display
+                        original_img = Image.open(orig_img_path)
+                        original_image_b64 = image_to_base64(original_img, quality=60)
+                        
+                    except Exception as compression_error:
+                        print(f"Error during file-based compression: {str(compression_error)}")
+                        # Fall back to in-memory processing
+                        image = base64_to_image(prev_result_b64)
+                        original_img = base64_to_image(request.form.get('original_image_b64', prev_result_b64))
+                        original_image_b64 = image_to_base64(original_img, quality=60)
                 except Exception as e:
                     return render_template('index.html', error=f"Error processing previous edit: {str(e)}", texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
             else:
@@ -851,6 +912,16 @@ def gallery():
     
     except Exception as e:
         return render_template('gallery.html', error=f"Error retrieving gallery: {str(e)}", texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
+
+# Custom error handler for request entity too large
+@app.errorhandler(RequestEntityTooLarge)
+def handle_request_too_large(error):
+    lang = session.get('lang', 'en')
+    return render_template('index.html', 
+                          error="The uploaded image is too large. Please try with a smaller image or reduce the resolution.",
+                          texts=TRANSLATIONS[lang], 
+                          lang=lang, 
+                          dir="rtl" if lang == "ar" else "ltr"), 413
 
 if __name__ == '__main__':
     app.run(debug=True)

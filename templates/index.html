@@ -469,7 +469,7 @@
                 <!-- Upload section -->
                 <div class="card">
                     <div class="card-body">
-                        <h5 class="card-title">{{ texts.upload_image }}</h5>
+                        <h5 class="card-title">{{ texts.upload_image }} <span class="text-danger">*</span></h5>
                         <form method="POST" enctype="multipart/form-data" onsubmit="showLoading()" id="upload-form">
                             <div class="upload-area" onclick="document.getElementById('file').click()">
                                 <i class="fas fa-cloud-upload-alt fa-3x mb-3" style="color: var(--primary-color);"></i>
@@ -511,9 +511,6 @@
                                             <i class="fas fa-undo me-1"></i>{{ texts.new_image }}
                                         </button>
                                         <div>
-                                            <button class="btn btn-outline-success btn-sm me-2" id="continue-edit-btn">
-                                                <i class="fas fa-edit me-1"></i>Continue Editing
-                                            </button>
                                             <button class="btn btn-primary btn-sm" id="download-edit-btn">
                                                 <i class="fas fa-download me-1"></i>{{ texts.download }}
                                             </button>
@@ -536,7 +533,7 @@
                                     </div>
                                     <textarea class="form-control" name="prompt" rows="3" placeholder="{{ texts.prompt_placeholder }}" required></textarea>
                                 </div>
-                                <button type="submit" class="btn btn-primary w-100 mt-3" id="generate-btn">
+                                <button type="submit" class="btn btn-primary w-100 mt-3" id="generate-btn" disabled title="Please select an image first">
                                     <i class="fas fa-magic me-2"></i>{{ texts.generate_button }}
                                 </button>
                                 <input type="hidden" name="continue_edit" id="continue-edit-input" value="false">
@@ -839,6 +836,13 @@
         function updateFileName(input) {
             const fileName = input.files[0]?.name || '';
             document.getElementById('file-name').textContent = fileName;
+            
+            // Update generate button state
+            const generateButton = document.getElementById('generate-btn');
+            if (generateButton) {
+                generateButton.disabled = !fileName;
+                generateButton.title = fileName ? '' : 'Please select an image first';
+            }
         }
         
         function previewImage(input) {
@@ -1011,23 +1015,24 @@
             setupFormSubmissions();
             setupRetryButton();
             
-            // Check if there's an existing result image displayed (server-side rendering)
-            const resultImg = document.querySelector('.img-comp-container .img-comp-img img[alt="Edited Image"]');
-            if (resultImg && resultImg.src) {
-                const generateButton = document.getElementById('generate-btn');
-                const continueButton = document.getElementById('continue-btn');
-                const continueEditInput = document.getElementById('continue-edit-input');
-                
-                if (generateButton && continueButton) {
-                    // If we're on the results page, swap the buttons
-                    if (document.querySelector('.card-title')?.textContent.includes('Edited Image')) {
-                        generateButton.style.display = 'none';
-                        continueButton.style.display = 'block';
-                        if (continueEditInput) {
-                            continueEditInput.value = 'true';
-                        }
-                    }
+            // Set initial button state
+            const fileInput = document.getElementById('file');
+            const generateBtn = document.getElementById('generate-btn');
+            const comparisonContainer = document.getElementById('image-comparison-container');
+            
+            // Check for continue edit mode first
+            if (comparisonContainer && comparisonContainer.style.display !== 'none') {
+                // We're in continue edit mode, make sure button is enabled
+                if (generateBtn) {
+                    generateBtn.disabled = false;
+                    generateBtn.title = '';
+                    generateBtn.innerHTML = '<i class="fas fa-magic me-2"></i>Continue Editing';
+                    generateBtn.setAttribute('data-editing-mode', 'continue');
                 }
+            } else if (generateBtn && fileInput && (!fileInput.files || fileInput.files.length === 0)) {
+                // Only disable if we're not in continue mode and no file is selected
+                generateBtn.disabled = true;
+                generateBtn.title = 'Please select an image file first';
             }
         });
         
@@ -1041,17 +1046,55 @@
             const originalPreview = document.getElementById('original-preview');
             const editedPreview = document.getElementById('edited-preview');
             const resetButton = document.getElementById('reset-edit-btn');
-            const continueEditButton = document.getElementById('continue-edit-btn');
             const downloadButton = document.getElementById('download-edit-btn');
             const promptTextarea = document.querySelector('textarea[name="prompt"]');
             const imagePreview = document.getElementById('image-preview');
             
             if (!generateButton || !previewContainer) return;
             
-            // Check if we need to indicate this is a continued edit
-            if (comparisonContainer && comparisonContainer.style.display === 'block' && editedPreview && editedPreview.src) {
+            // Handle upload preview display
+            if (imagePreview && imagePreview.src && imagePreview.src !== '#') {
+                previewContainer.style.display = 'block';
+            }
+            
+            // Check if we have an edited preview image
+            if (comparisonContainer && comparisonContainer.style.display === 'block' && 
+                editedPreview && editedPreview.src && editedPreview.src !== '#') {
+                
+                // Prepare for continued editing
                 if (continueEditInput) {
                     continueEditInput.value = 'true';
+                }
+                
+                // Update the button text to indicate we're continuing the edit
+                if (generateButton) {
+                    generateButton.innerHTML = '<i class="fas fa-edit me-2"></i>Continue Editing';
+                    generateButton.classList.add('btn-success');
+                    generateButton.classList.remove('btn-primary');
+                    generateButton.setAttribute('data-editing-mode', 'continue');
+                    generateButton.disabled = false;
+                    generateButton.title = '';
+                    
+                    // Scroll to the prompt textarea to encourage continued editing
+                    promptTextarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    promptTextarea.focus();
+                    
+                    if (promptTextarea.value === '') {
+                        promptTextarea.placeholder = "Describe how to further edit the image. For example: 'Now make it black and white' or 'Add a vintage filter'";
+                    }
+                }
+            } else {
+                // Reset to initial edit mode
+                if (continueEditInput) {
+                    continueEditInput.value = 'false';
+                }
+                
+                // Ensure button text is set for initial editing
+                if (generateButton && generateButton.getAttribute('data-editing-mode') !== 'initial') {
+                    generateButton.innerHTML = '<i class="fas fa-magic me-2"></i>{{ texts.generate_button }}';
+                    generateButton.classList.add('btn-primary');
+                    generateButton.classList.remove('btn-success');
+                    generateButton.setAttribute('data-editing-mode', 'initial');
                 }
             }
             
@@ -1083,7 +1126,11 @@
                     const fileInput = document.getElementById('file');
                     if (fileInput) {
                         fileInput.value = '';
-                        document.getElementById('file-name').textContent = '';
+                        const fileNameElement = document.getElementById('file-name');
+                        if (fileNameElement) {
+                            fileNameElement.textContent = '';
+                            fileNameElement.style.color = '';
+                        }
                     }
                     
                     // Reset continue_edit flag
@@ -1091,33 +1138,16 @@
                         continueEditInput.value = 'false';
                     }
                     
+                    // Reset the button back to Generate Edited Image
+                    if (generateButton) {
+                        generateButton.innerHTML = '<i class="fas fa-magic me-2"></i>{{ texts.generate_button }}';
+                        generateButton.classList.add('btn-primary');
+                        generateButton.classList.remove('btn-success');
+                        generateButton.setAttribute('data-editing-mode', 'initial');
+                    }
+                    
                     // Redirect to the home page to start fresh
                     window.location.href = '/';
-                });
-            }
-            
-            // Handle continue edit button (the secondary one in the comparison view)
-            if (continueEditButton) {
-                continueEditButton.addEventListener('click', function() {
-                    // Scroll to the prompt input
-                    const promptContainer = document.querySelector('.mt-4 .form-group');
-                    if (promptContainer) {
-                        // Ensure the prompt textarea is visible
-                        promptContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        
-                        // Focus on textarea and suggest continuing the edit
-                        if (promptTextarea) {
-                            promptTextarea.focus();
-                            if (promptTextarea.value === '') {
-                                promptTextarea.placeholder = "Describe how to further edit the image. For example: 'Now make it black and white' or 'Add a vintage filter'";
-                            }
-                        }
-                        
-                        // Set continue edit flag
-                        if (continueEditInput) {
-                            continueEditInput.value = 'true';
-                        }
-                    }
                 });
             }
             
@@ -1211,6 +1241,7 @@
             const continueEditInput = document.getElementById('continue-edit-input');
             const previousResultInput = document.getElementById('previous-result-b64');
             const originalImageInput = document.getElementById('original-image-b64');
+            const promptTextarea = document.querySelector('textarea[name="prompt"]');
             
             if (comparisonContainer && editedPreview) {
                 editedPreview.src = editedImageSrc;
@@ -1219,6 +1250,26 @@
                 // Update hidden fields to indicate we're continuing an edit
                 if (continueEditInput) {
                     continueEditInput.value = 'true';
+                }
+                
+                // Make sure the generate button is enabled and updated for continued editing
+                if (generateButton) {
+                    generateButton.disabled = false;
+                    generateButton.title = '';
+                    generateButton.innerHTML = '<i class="fas fa-edit me-2"></i>Continue Editing';
+                    generateButton.classList.add('btn-success');
+                    generateButton.classList.remove('btn-primary');
+                    generateButton.setAttribute('data-editing-mode', 'continue');
+                    
+                    // Scroll to the textarea and focus it to encourage continued editing
+                    if (promptTextarea) {
+                        promptTextarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        promptTextarea.focus();
+                        
+                        if (promptTextarea.value === '') {
+                            promptTextarea.placeholder = "Describe how to further edit the image. For example: 'Now make it black and white' or 'Add a vintage filter'";
+                        }
+                    }
                 }
                 
                 // Update hidden fields for continued editing with aggressive compression
@@ -1482,6 +1533,9 @@
             const comparisonContainer = document.getElementById('image-comparison-container');
             const originalPreview = document.getElementById('original-preview');
             const editedPreview = document.getElementById('edited-preview');
+            const generateButton = document.getElementById('generate-btn');
+            const continueEditInput = document.getElementById('continue-edit-input');
+            const promptTextarea = document.querySelector('textarea[name="prompt"]');
             
             if (imagePreviewContainer && comparisonContainer && originalPreview && editedPreview) {
                 // Show the preview container
@@ -1495,6 +1549,30 @@
                 
                 // Show comparison container
                 comparisonContainer.style.display = 'block';
+                
+                // Update generate button to continue editing mode
+                if (generateButton) {
+                    generateButton.innerHTML = '<i class="fas fa-edit me-2"></i>Continue Editing';
+                    generateButton.classList.add('btn-success');
+                    generateButton.classList.remove('btn-primary');
+                    generateButton.setAttribute('data-editing-mode', 'continue');
+                    generateButton.disabled = false;
+                    generateButton.title = '';
+                    
+                    if (continueEditInput) {
+                        continueEditInput.value = 'true';
+                    }
+                }
+                
+                // Focus on prompt textarea
+                if (promptTextarea) {
+                    promptTextarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    promptTextarea.focus();
+                    
+                    if (promptTextarea.value === '') {
+                        promptTextarea.placeholder = "Describe how to further edit the image. For example: 'Now make it black and white' or 'Add a vintage filter'";
+                    }
+                }
                 
                 // Initialize slider for the preview
                 setTimeout(function() {
