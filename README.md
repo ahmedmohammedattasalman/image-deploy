@@ -1,25 +1,26 @@
-# Image Editing with Gemini AI and Supabase Storage
+# AI Image Enhancement and Editing
 
-This application allows you to edit images using Google's Gemini AI model. It stores images in Supabase for cloud storage instead of local storage.
+A web application for enhancing and editing images using Google's Gemini AI. This application allows users to upload images and apply AI-driven edits through natural language prompts.
 
 ## Features
 
-- Upload images and edit them with natural language prompts
-- See side-by-side comparisons of original and edited images  
-- Store all images in Supabase cloud storage
-- Continue editing images with sequential prompts
-- View your edit history
+- **Natural Language Image Editing**: Edit images by describing what you want in plain language
+- **Progressive Editing**: Continue editing the same image with multiple prompts
+- **Image Comparison**: Slide to compare original and edited images
+- **Gallery View**: Browse all your edited images
+- **Image Storage**: Images are stored in Supabase cloud storage
+- **Bilingual Support**: Available in English and Arabic
+- **Responsive Design**: Works on desktop and mobile devices
 
-## Setup
+## Tech Stack
 
-### Prerequisites
+- **Backend**: Flask (Python)
+- **AI Model**: Google Gemini 2.0 Flash Experimental Image Generation
+- **Cloud Storage**: Supabase
+- **Frontend**: HTML, CSS, JavaScript, Bootstrap
+- **Image Processing**: PIL (Python Imaging Library)
 
-- Python 3.8+
-- Flask
-- Google Gemini AI API key
-- Supabase project
-
-### Installation
+## Installation
 
 1. Clone the repository:
    ```bash
@@ -27,7 +28,7 @@ This application allows you to edit images using Google's Gemini AI model. It st
    cd image-editing
    ```
 
-2. Install dependencies:
+2. Install the required packages:
    ```bash
    pip install -r requirements.txt
    ```
@@ -58,32 +59,36 @@ This application allows you to edit images using Google's Gemini AI model. It st
    python main.py
    ```
 
-7. Open your browser to [http://localhost:5000](http://localhost:5000)
+7. Open your browser and navigate to `http://127.0.0.1:5000/`
+
+## Usage
+
+1. Upload an image using the drag-and-drop area or file selector
+2. Describe your desired edit in the text area (e.g., "Make it black and white", "Remove the background")
+3. Click "Generate Edited Image" to process your request
+4. Use the comparison slider to see the difference between original and edited images
+5. Download the edited image or continue editing with another prompt
+6. View your edit history in the gallery
 
 ## Configuration
 
-The main configuration is in `main.py`:
+The application uses the following environment variables:
 
-- `API_KEY`: Your Google Gemini AI API key
-- `SUPABASE_URL`: Your Supabase project URL
-- `SUPABASE_KEY`: Your Supabase anon/public key
+- `API_KEY`: Google Gemini API key
+- `SUPABASE_URL`: Supabase project URL
+- `SUPABASE_KEY`: Supabase project API key
 
-## How It Works
+## Error Handling
 
-1. Upload an image or continue editing a previous one
-2. Enter a natural language prompt describing the edit you want
-3. The application sends your image and prompt to Google's Gemini AI
-4. The edited image is returned and displayed alongside the original
-5. Both original and edited images are stored in Supabase for future reference
-6. You can continue editing the result with additional prompts
-
-## Storage Structure
-
-Images are stored in Supabase with:
-- Storage bucket: "images"
-- Folders: "original" and "edited"
-- Database table: "images" that tracks all stored images
+The application includes robust error handling for:
+- Large images (automatic compression)
+- API overload conditions (retries with exponential backoff)
+- Network issues (automatic reconnection)
 
 ## License
 
-[MIT](https://choosealicense.com/licenses/mit/) 
+MIT License
+
+## Author
+
+Ahmed Mohammed Atta Salman 

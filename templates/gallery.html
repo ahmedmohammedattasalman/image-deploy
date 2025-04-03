@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ lang }}" dir="{{ dir }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Gallery - Supabase Storage</title>
+    <title>{{ texts.gallery }} - {{ texts.app_name }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -31,6 +31,30 @@
         .navbar-brand {
             font-weight: bold;
             color: white !important;
+        }
+        
+        /* Language switcher */
+        .language-switcher {
+            display: flex;
+            align-items: center;
+        }
+        
+        .language-switcher a {
+            color: white;
+            text-decoration: none;
+            padding: 5px 10px;
+            margin-left: 5px;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        
+        .language-switcher a:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        .language-switcher a.active {
+            background-color: rgba(255, 255, 255, 0.3);
+            font-weight: bold;
         }
         
         .card {
@@ -252,234 +276,110 @@
         <div class="container">
             <a class="navbar-brand" href="/">
                 <i class="fas fa-wand-magic-sparkles me-2"></i>
-                Image Editor
+                {{ texts.app_name }}
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav me-auto">
                     <li class="nav-item">
                         <a class="nav-link" href="/">
-                            <i class="fas fa-home me-1"></i> Home
+                            <i class="fas fa-home me-1"></i> {{ texts.home }}
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link active" href="/gallery">
-                            <i class="fas fa-images me-1"></i> Gallery
+                            <i class="fas fa-images me-1"></i> {{ texts.gallery }}
                         </a>
                     </li>
                 </ul>
+                <div class="language-switcher">
+                    <a href="{{ url_for('set_language', lang='en') }}" class="{{ 'active' if lang == 'en' else '' }}">English</a>
+                    <a href="{{ url_for('set_language', lang='ar') }}" class="{{ 'active' if lang == 'ar' else '' }}">العربية</a>
+                </div>
             </div>
         </div>
     </nav>
 
     <div class="container">
-        <h2 class="gallery-heading">
-            <i class="fas fa-images me-2"></i>
-            Supabase Image Gallery
-        </h2>
-        
         {% if error %}
         <div class="alert alert-danger">
-            <strong>Error:</strong> {{ error }}
+            <i class="fas fa-exclamation-circle me-2"></i> {{ error }}
         </div>
         {% endif %}
         
+        <h1 class="gallery-heading">{{ texts.gallery }}</h1>
+        
+        {% if image_pairs %}
         <div class="row">
-            {% if image_pairs and image_pairs|length > 0 %}
-                {% for pair in image_pairs %}
-                    <div class="col-md-6 col-lg-4 mb-4">
-                        <div class="card h-100">
-                            {% if pair.original and pair.edited %}
-                                <!-- Before/After comparison view -->
-                                <div class="img-comp-container" id="comparison-{{ loop.index }}">
-                                    <div class="img-comp-img">
-                                        <span class="image-type-badge badge-edited">After</span>
-                                        <img src="{{ pair.edited.url }}" alt="Edited Image">
-                                    </div>
-                                    <div class="img-comp-img img-comp-overlay" style="width: 50%;">
-                                        <span class="image-type-badge badge-original">Before</span>
-                                        <img src="{{ pair.original.url }}" alt="Original Image">
-                                    </div>
-                                    <div class="img-comp-slider" style="left: 50%;">
-                                        <i class="fas fa-arrows-alt-h"></i>
-                                    </div>
-                                </div>
-                            {% elif pair.original %}
-                                <!-- Original image only -->
-                                <div class="gallery-item">
-                                    <span class="image-type-badge badge-original">Original</span>
-                                    <img src="{{ pair.original.url }}" alt="Original Image">
-                                    <div class="gallery-item-actions">
-                                        <a href="{{ pair.original.url }}" class="gallery-action-btn" download>
-                                            <i class="fas fa-download"></i>
-                                        </a>
-                                        <a href="{{ pair.original.url }}" class="gallery-action-btn" target="_blank">
-                                            <i class="fas fa-external-link-alt"></i>
-                                        </a>
-                                    </div>
-                                </div>
-                            {% elif pair.edited %}
-                                <!-- Edited image only -->
-                                <div class="gallery-item">
-                                    <span class="image-type-badge badge-edited">Edited</span>
-                                    <img src="{{ pair.edited.url }}" alt="Edited Image">
-                                    <div class="gallery-item-actions">
-                                        <a href="{{ pair.edited.url }}" class="gallery-action-btn" download>
-                                            <i class="fas fa-download"></i>
-                                        </a>
-                                        <a href="{{ pair.edited.url }}" class="gallery-action-btn" target="_blank">
-                                            <i class="fas fa-external-link-alt"></i>
-                                        </a>
-                                    </div>
-                                </div>
-                            {% endif %}
-                            
-                            <div class="card-body">
-                                <h5 class="card-title">
-                                    {% if pair.original and pair.edited %}
-                                        Before & After Comparison
-                                    {% elif pair.original %}
-                                        Original Image
-                                    {% elif pair.edited %}
-                                        Edited Image
-                                    {% endif %}
-                                </h5>
-                                
-                                <div class="date-label">
-                                    {% if pair.original and pair.original.created_at %}
-                                        Original uploaded: {{ pair.original.created_at.split('T')[0] }} {{ pair.original.created_at.split('T')[1].split('.')[0] }}
-                                    {% endif %}
-                                    
-                                    {% if pair.edited and pair.edited.created_at %}
-                                        <br>
-                                        Edited created: {{ pair.edited.created_at.split('T')[0] }} {{ pair.edited.created_at.split('T')[1].split('.')[0] }}
-                                    {% endif %}
-                                </div>
-                                
-                                <div class="mt-3">
-                                    {% if pair.original and pair.edited %}
-                                        <div class="btn-group w-100">
-                                            <a href="{{ pair.original.url }}" class="btn btn-sm btn-outline-primary" download>
-                                                <i class="fas fa-download me-1"></i> Original
-                                            </a>
-                                            <a href="{{ pair.edited.url }}" class="btn btn-sm btn-outline-success" download>
-                                                <i class="fas fa-download me-1"></i> Edited
-                                            </a>
-                                        </div>
-                                    {% elif pair.original %}
-                                        <a href="{{ pair.original.url }}" class="btn btn-sm btn-primary w-100" download>
-                                            <i class="fas fa-download me-1"></i> Download
-                                        </a>
-                                    {% elif pair.edited %}
-                                        <a href="{{ pair.edited.url }}" class="btn btn-sm btn-primary w-100" download>
-                                            <i class="fas fa-download me-1"></i> Download
-                                        </a>
-                                    {% endif %}
-                                </div>
-                            </div>
+            {% for pair in image_pairs %}
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card">
+                    <div class="img-comp-container">
+                        <!-- Edited Image -->
+                        <div class="img-comp-img">
+                            <img src="{{ pair.edited_url }}" alt="Edited Image">
+                            <span class="image-type-badge badge-edited">{{ texts.edited }}</span>
+                        </div>
+                        <!-- Original Image - overlay visible on hover -->
+                        <div class="img-comp-img original-overlay" style="opacity: 0;">
+                            <img src="{{ pair.original_url }}" alt="Original Image">
+                            <span class="image-type-badge badge-original">{{ texts.original }}</span>
                         </div>
                     </div>
-                {% endfor %}
-            {% else %}
-                <div class="col-12">
-                    <div class="empty-gallery">
-                        <i class="fas fa-images"></i>
-                        <h5>Your gallery is empty</h5>
-                        <p>No images found in Supabase storage</p>
-                        <a href="/" class="btn btn-primary mt-3">
-                            <i class="fas fa-plus me-2"></i>Add Images
-                        </a>
+                    <div class="card-body">
+                        <h5 class="card-title">{{ pair.name }}</h5>
+                        <p class="card-text text-muted">{{ pair.created_at }}</p>
+                        <div class="d-flex">
+                            <a href="{{ pair.edited_url }}" download="edited_image.png" class="btn btn-primary me-2">
+                                <i class="fas fa-download me-1"></i> {{ texts.download }}
+                            </a>
+                            <a href="/" class="btn btn-outline-primary">
+                                <i class="fas fa-edit me-1"></i> {{ texts.new_image }}
+                            </a>
+                        </div>
                     </div>
                 </div>
-            {% endif %}
+            </div>
+            {% endfor %}
         </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-images fa-4x mb-3 text-muted"></i>
+            <h3>{{ texts.gallery_empty }}</h3>
+            <p class="lead text-muted">{{ texts.edited_appear }}</p>
+            <a href="/" class="btn btn-primary mt-3">
+                <i class="fas fa-upload me-2"></i> {{ texts.upload_image }}
+            </a>
+        </div>
+        {% endif %}
     </div>
-
-    <footer class="text-center mt-5 py-3">
+    
+    <footer class="text-center mt-5 py-4 bg-dark text-white">
         <div class="container">
-            <p>Powered by Google Gemini AI | Images stored with <a href="https://supabase.com" target="_blank">Supabase</a></p>
+            <p>{{ texts.powered_by }} <a href="https://supabase.com" target="_blank" class="text-info">Supabase</a></p>
         </div>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Initialize image comparison sliders
-        document.addEventListener('DOMContentLoaded', function() {
-            // Find all comparison containers
-            const compContainers = document.querySelectorAll('.img-comp-container');
+        // Store the page direction for JavaScript use
+        const pageDir = document.documentElement.dir || 'ltr';
+        const isRTL = pageDir === 'rtl';
+        
+        // Show original image on hover
+        document.querySelectorAll('.img-comp-container').forEach(container => {
+            const original = container.querySelector('.original-overlay');
             
-            compContainers.forEach(function(container) {
-                initComparisonSlider(container);
+            container.addEventListener('mouseenter', () => {
+                original.style.opacity = '1';
+                original.style.transition = 'opacity 0.3s';
             });
             
-            function initComparisonSlider(container) {
-                const slider = container.querySelector('.img-comp-slider');
-                const overlayImg = container.querySelector('.img-comp-overlay');
-                
-                if (!slider || !overlayImg) return;
-                
-                let isDragging = false;
-                let startX;
-                
-                // Set initial width (50%)
-                overlayImg.style.width = '50%';
-                slider.style.left = '50%';
-                
-                // Touch/mouse events for slider
-                slider.addEventListener('mousedown', startSliding);
-                slider.addEventListener('touchstart', startSliding);
-                
-                container.addEventListener('mousemove', slide);
-                container.addEventListener('touchmove', slide);
-                
-                window.addEventListener('mouseup', stopSliding);
-                window.addEventListener('touchend', stopSliding);
-                
-                // Click anywhere on the container to set slider position
-                container.addEventListener('click', function(e) {
-                    if (e.target === slider) return;
-                    
-                    const rect = container.getBoundingClientRect();
-                    const x = e.clientX - rect.left;
-                    const containerWidth = container.offsetWidth;
-                    
-                    const percentage = Math.max(0, Math.min(100, (x / containerWidth) * 100));
-                    
-                    overlayImg.style.width = percentage + '%';
-                    slider.style.left = percentage + '%';
-                });
-                
-                function startSliding(e) {
-                    e.preventDefault();
-                    isDragging = true;
-                    
-                    // Get starting cursor position
-                    startX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
-                }
-                
-                function slide(e) {
-                    if (!isDragging) return;
-                    e.preventDefault();
-                    
-                    const x = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
-                    const containerRect = container.getBoundingClientRect();
-                    const containerWidth = containerRect.width;
-                    
-                    // Calculate the position as a percentage of container width
-                    let pos = ((x - containerRect.left) / containerWidth) * 100;
-                    pos = Math.max(0, Math.min(100, pos)); // Constrain between 0-100%
-                    
-                    // Update position
-                    overlayImg.style.width = pos + '%';
-                    slider.style.left = pos + '%';
-                }
-                
-                function stopSliding() {
-                    isDragging = false;
-                }
-            }
+            container.addEventListener('mouseleave', () => {
+                original.style.opacity = '0';
+            });
         });
     </script>
 </body>

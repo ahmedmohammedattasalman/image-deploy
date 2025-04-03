@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify, send_from_directory, session
 import os
 import io
 import tempfile
@@ -15,9 +15,74 @@ from supabase import create_client
 from dotenv import load_dotenv
 import requests
 import random
+import json
 
 # Load environment variables
 load_dotenv()
+
+# Language support
+TRANSLATIONS = {
+    "en": {
+        "app_name": "Image Editor",
+        "home": "Home",
+        "gallery": "Gallery",
+        "upload_image": "Upload Your Image",
+        "drag_drop": "Drag and drop or click to choose file",
+        "image_preview": "Image Preview:",
+        "describe_edit": "Describe Your Edit",
+        "prompt_placeholder": "Example: Remove the background, Change hair color to blonde, Make it look like a cartoon, etc.",
+        "generate_button": "Generate Edited Image",
+        "edited_image": "Your Edited Image",
+        "slide_compare": "Slide to compare before and after",
+        "original": "Original",
+        "edited": "Edited",
+        "new_image": "New Image",
+        "download": "Download",
+        "ai_response": "AI Response:",
+        "cloud_storage": "Cloud Storage Links:",
+        "continue_editing": "Continue Editing",
+        "continue_prompt": "Describe your next edit. Example: Now make it black and white, Add a vintage filter, etc.",
+        "apply_next": "Apply Next Edit",
+        "processing": "Processing your image with AI... This may take a moment",
+        "your_gallery": "Your Gallery",
+        "gallery_empty": "Your gallery is empty",
+        "edited_appear": "Edited images will appear here",
+        "powered_by": "Powered by Google Gemini AI | Images stored with"
+    },
+    "ar": {
+        "app_name": "محرر الصور",
+        "home": "الرئيسية",
+        "gallery": "المعرض",
+        "upload_image": "ارفع صورتك",
+        "drag_drop": "اسحب وأفلت أو انقر لاختيار ملف",
+        "image_preview": "معاينة الصورة:",
+        "describe_edit": "وصف التعديل",
+        "prompt_placeholder": "مثال: إزالة الخلفية، تغيير لون الشعر إلى أشقر، اجعله يبدو مثل رسوم متحركة، إلخ.",
+        "generate_button": "إنشاء الصورة المعدلة",
+        "edited_image": "صورتك المعدلة",
+        "slide_compare": "اسحب للمقارنة بين الصورة قبل وبعد",
+        "original": "الأصلية",
+        "edited": "المعدلة",
+        "new_image": "صورة جديدة",
+        "download": "تحميل",
+        "ai_response": "رد الذكاء الاصطناعي:",
+        "cloud_storage": "روابط التخزين السحابي:",
+        "continue_editing": "متابعة التحرير",
+        "continue_prompt": "صف تعديلك التالي. مثال: الآن اجعلها بالأبيض والأسود، أضف فلتر قديم، إلخ.",
+        "apply_next": "تطبيق التعديل التالي",
+        "processing": "جاري معالجة صورتك بالذكاء الاصطناعي... قد يستغرق ذلك لحظة",
+        "your_gallery": "معرض صورك",
+        "gallery_empty": "معرض صورك فارغ",
+        "edited_appear": "ستظهر الصور المعدلة هنا",
+        "powered_by": "مشغل بواسطة Google Gemini AI | الصور مخزنة باستخدام"
+    }
+}
+
+# Function to get language text
+def get_text(key, lang="en"):
+    if lang in TRANSLATIONS and key in TRANSLATIONS[lang]:
+        return TRANSLATIONS[lang][key]
+    return TRANSLATIONS["en"][key]  # Fallback to English
 
 # Configuration
 API_KEY = "AIzaSyBbE0FW-7SEm1FW0NgusR18GmsV10aAVYE"
@@ -52,11 +117,26 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
 # Initialize Flask app
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
+app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024  # 64MB max upload size
+app.config['SERVER_NAME'] = None  # Prevent issues with request handling
+app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024  # Set explicitly to 64MB
 app.config['SESSION_TYPE'] = 'filesystem'  # For session storage
+app.secret_key = 'image_enhancement_secret_key'  # Secret key for session
 
 # Initialize Gemini client
 client = genai.Client(api_key=API_KEY)
+
+# Language route
+@app.route('/set_language/<lang>')
+def set_language(lang):
+    if lang in TRANSLATIONS:
+        session['lang'] = lang
+    else:
+        session['lang'] = 'en'  # Default to English if language not supported
+    
+    # Redirect back to the referring page or home
+    referrer = request.referrer or url_for('index')
+    return redirect(referrer)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -69,12 +149,87 @@ def base64_to_image(base64_str):
     
     # Decode base64 to binary
     img_data = base64.b64decode(base64_str)
-    return Image.open(BytesIO(img_data))
+    img = Image.open(BytesIO(img_data))
+    
+    # Compress large images automatically
+    if img.width * img.height > 1500000:  # Images larger than ~1.5 megapixels
+        return compress_image(img)
+    
+    return img
+
+# Function to compress and resize large images
+def compress_image(image, max_size_mb=3, quality=80):
+    """
+    Compress and resize image to reduce its size
+    
+    Args:
+        image: PIL Image object
+        max_size_mb: Maximum size in MB
+        quality: JPEG compression quality (1-100)
+    
+    Returns:
+        Compressed PIL Image object
+    """
+    # Convert to RGB if it's not
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    # Start with original size
+    width, height = image.size
+    max_pixels = 1800  # Maximum dimension for any side - reduced from 2000
+    
+    # First resize if necessary to keep dimensions reasonable
+    if width > max_pixels or height > max_pixels:
+        if width > height:
+            new_width = max_pixels
+            new_height = int(height * (max_pixels / width))
+        else:
+            new_height = max_pixels
+            new_width = int(width * (max_pixels / height))
+        
+        image = image.resize((new_width, new_height), Image.LANCZOS)
+    
+    # Check if we need to compress
+    buffered = BytesIO()
+    image.save(buffered, format="JPEG", quality=quality, optimize=True)
+    img_size_mb = len(buffered.getvalue()) / (1024 * 1024)
+    
+    # If still too large, reduce quality iteratively and maybe resize further
+    if img_size_mb > max_size_mb:
+        # If quality is already quite low but file is still large, reduce dimensions further
+        if quality < 60:
+            # Reduce dimensions by 25%
+            new_width = int(image.width * 0.75)
+            new_height = int(image.height * 0.75)
+            image = image.resize((new_width, new_height), Image.LANCZOS)
+            # Try again with reduced size but reset quality
+            return compress_image(image, max_size_mb, 75)
+        else:
+            # Try with lower quality first
+            return compress_image(image, max_size_mb, max(40, quality-15))
+    
+    # Return compressed image
+    buffered.seek(0)
+    return Image.open(buffered)
 
 # Helper to convert image to base64
-def image_to_base64(img):
+def image_to_base64(img, format="PNG", quality=85):
     buffered = BytesIO()
-    img.save(buffered, format="PNG")
+    
+    # Compress large images to JPEG with specified quality
+    if img.width * img.height > 1000000:  # For images over ~1 megapixel
+        # Convert to RGB if necessary for JPEG
+        if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+            bg = Image.new('RGB', img.size, (255, 255, 255))
+            bg.paste(img, mask=img.split()[3] if img.mode == 'RGBA' else None)
+            img = bg
+        
+        format = "JPEG"
+        img.save(buffered, format=format, quality=quality, optimize=True)
+    else:
+        # For smaller images, keep the PNG format for better quality
+        img.save(buffered, format="PNG")
+    
     return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
 # Helper to store image in Supabase
@@ -242,72 +397,143 @@ def create_sample_image():
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
+    # Get current language from session or default to English
+    lang = session.get('lang', 'en')
+    
     if request.method == 'POST':
         try:
             # Check if prompt is provided
             if 'prompt' not in request.form:
-                return render_template('index.html', error="Please provide a prompt.")
+                return render_template('index.html', error="Please provide a prompt.", texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
             
             prompt = request.form['prompt']
             
             # Check if this is a continued edit
             continue_edit = request.form.get('continue_edit') == 'true'
             
+            # Initialize previous prompts list
+            previous_prompts = []
+            
             if continue_edit:
                 # Get the previous result from hidden form field
                 prev_result_b64 = request.form.get('previous_result_b64', '')
                 
+                # Get previous prompts if available
+                previous_prompts_str = request.form.get('previous_prompts', '')
+                if previous_prompts_str:
+                    try:
+                        previous_prompts = json.loads(previous_prompts_str)
+                    except:
+                        previous_prompts = []
+                
                 if not prev_result_b64:
-                    return render_template('index.html', error="Previous result not found. Please start with a new image.")
+                    return render_template('index.html', error="Previous result not found. Please start with a new image.", texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
                 
                 try:
-                    # Convert base64 to image for processing
+                    # Convert base64 to image for processing and compress large images
                     image = base64_to_image(prev_result_b64)
                     
-                    # Save original image base64 for comparison
-                    original_image_b64 = request.form.get('original_image_b64', prev_result_b64)
+                    # Save original image base64 for comparison (compress if needed)
+                    original_image_b64_raw = request.form.get('original_image_b64', prev_result_b64)
+                    original_img = base64_to_image(original_image_b64_raw)
+                    
+                    # Compress the images if they're too large
+                    if original_img.width * original_img.height > 1500000:
+                        original_img = compress_image(original_img)
+                    
+                    if image.width * image.height > 1500000:
+                        image = compress_image(image)
+                    
+                    # Convert to compressed base64
+                    original_image_b64 = image_to_base64(original_img)
                 except Exception as e:
-                    return render_template('index.html', error=f"Error processing previous edit: {str(e)}")
+                    return render_template('index.html', error=f"Error processing previous edit: {str(e)}", texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
             else:
                 # Normal flow - check for file upload
                 if 'file' not in request.files:
-                    return render_template('index.html', error="Please upload an image.")
+                    return render_template('index.html', error="Please upload an image.", texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
                 
                 file = request.files['file']
                 
                 # Check if file is valid
                 if file.filename == '':
-                    return render_template('index.html', error="No file selected.")
+                    return render_template('index.html', error="No file selected.", texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
                 
                 if not allowed_file(file.filename):
-                    return render_template('index.html', error="File type not allowed. Please upload PNG or JPG images.")
+                    return render_template('index.html', error="File type not allowed. Please upload PNG or JPG images.", texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
                 
-                # Read the image directly
-                image = Image.open(file.stream)
-                
-                # Store the original image in Supabase
-                original_id, original_url = None, None
                 try:
-                    original_id, original_url = store_image_supabase(image, "original")
-                    if not original_url:
-                        print("Warning: Failed to store original image in Supabase, continuing with local processing")
+                    # Read the image directly
+                    image = Image.open(file.stream)
+                    
+                    # Compress large images to avoid memory issues
+                    if image.width * image.height > 1500000:  # ~1.5 megapixels
+                        image = compress_image(image)
+                    
+                    # Store the original image in Supabase
+                    original_id, original_url = None, None
+                    try:
+                        original_id, original_url = store_image_supabase(image, "original")
+                        if not original_url:
+                            print("Warning: Failed to store original image in Supabase, continuing with local processing")
+                    except Exception as e:
+                        print(f"Error storing original image: {str(e)}")
+                        # Continue with local processing if Supabase storage fails
+                    
+                    # Convert to base64 for original image reference with compression if needed
+                    original_image_b64 = image_to_base64(image)
                 except Exception as e:
-                    print(f"Error storing original image: {str(e)}")
-                    # Continue with local processing if Supabase storage fails
-                
-                # Convert to base64 for original image reference
-                original_image_b64 = image_to_base64(image)
+                    return render_template('index.html', error=f"Error processing uploaded image: {str(e)}", texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
+            
+            # Add current prompt to previous prompts list
+            previous_prompts.append(prompt)
             
             # Process the image with Gemini
             try:
-                # Generate content using Gemini
-                response = client.models.generate_content(
-                    model="gemini-2.0-flash-exp-image-generation",
-                    contents=[prompt, image],
-                    config=types.GenerateContentConfig(
-                        response_modalities=["Text", "Image"]
-                    )
-                )
+                # Generate content using Gemini with retry mechanism
+                max_retries = 3
+                retry_delay = 2
+                last_error = None
+                
+                for attempt in range(max_retries):
+                    try:
+                        # Generate content using Gemini
+                        response = client.models.generate_content(
+                            model="gemini-2.0-flash-exp-image-generation",
+                            contents=[prompt, image],
+                            config=types.GenerateContentConfig(
+                                response_modalities=["Text", "Image"]
+                            )
+                        )
+                        
+                        # If we got here, the request succeeded
+                        break
+                    except Exception as e:
+                        last_error = e
+                        error_message = str(e)
+                        
+                        # Check if this is an overload error
+                        if "503" in error_message and "overloaded" in error_message.lower():
+                            if attempt < max_retries - 1:
+                                # Add jitter to prevent thundering herd
+                                jitter = random.uniform(0, 1)
+                                sleep_time = retry_delay * (2 ** attempt) + jitter
+                                print(f"Gemini API overloaded, retrying in {sleep_time:.2f} seconds... (Attempt {attempt+1}/{max_retries})")
+                                time.sleep(sleep_time)
+                            else:
+                                # All retries failed
+                                return render_template('index.html', 
+                                            error="The AI image generation service is currently experiencing high traffic. Please try again in a few minutes.",
+                                            texts=TRANSLATIONS[lang], 
+                                            lang=lang, 
+                                            dir="rtl" if lang == "ar" else "ltr")
+                        else:
+                            # For other errors, don't retry
+                            raise e
+                
+                # If we exhausted all retries and still have an error
+                if 'response' not in locals():
+                    raise last_error
                 
                 # Process the response
                 response_text = ""
@@ -319,10 +545,15 @@ def index():
                         response_text += part.text
                     elif part.inline_data is not None:
                         result_image = Image.open(BytesIO(part.inline_data.data))
+                        
+                        # Compress the result image if needed before converting to base64
+                        if result_image.width * result_image.height > 1500000:
+                            result_image = compress_image(result_image)
+                            
                         result_image_b64 = image_to_base64(result_image)
                 
                 if not result_image_b64:
-                    return render_template('index.html', error="Failed to generate edited image.")
+                    return render_template('index.html', error="Failed to generate edited image.", texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
                 
                 # Store the edited image in Supabase
                 edited_id, edited_url = None, None
@@ -336,9 +567,24 @@ def index():
                         # Continue without Supabase storage if it fails
                 
                 # If it's not a continued edit, the current image is the first original
-                first_original_b64 = original_image_b64 if not continue_edit else request.form.get('first_original_b64', original_image_b64)
+                first_original_b64_raw = request.form.get('first_original_b64', original_image_b64)
                 
-                # Create response with the base64 images
+                # Ensure first_original is also compressed if needed
+                if continue_edit and first_original_b64_raw:
+                    try:
+                        first_original_img = base64_to_image(first_original_b64_raw)
+                        if first_original_img.width * first_original_img.height > 1500000:
+                            first_original_img = compress_image(first_original_img)
+                        first_original_b64 = image_to_base64(first_original_img)
+                    except:
+                        first_original_b64 = original_image_b64
+                else:
+                    first_original_b64 = original_image_b64
+                
+                # Convert previous prompts to JSON string for form submission
+                previous_prompts_json = json.dumps(previous_prompts)
+                
+                # Create response with the base64 images and flag for preview update
                 return render_template('index.html', 
                                     prompt=prompt, 
                                     original_image_b64=original_image_b64,
@@ -346,16 +592,29 @@ def index():
                                     first_original_b64=first_original_b64,
                                     response_text=response_text,
                                     is_b64_image=True,
+                                    update_preview=True,  # Flag to trigger preview update
+                                    previous_prompts=previous_prompts,  # Pass the list of previous prompts
+                                    previous_prompts_json=previous_prompts_json,  # Pass as JSON for form submission
                                     supabase_original_url=original_url if 'original_url' in locals() and original_url else None,
-                                    supabase_edited_url=edited_url if 'edited_url' in locals() and edited_url else None)
+                                    supabase_edited_url=edited_url if 'edited_url' in locals() and edited_url else None,
+                                    texts=TRANSLATIONS[lang], 
+                                    lang=lang, 
+                                    dir="rtl" if lang == "ar" else "ltr")
             
             except Exception as e:
-                return render_template('index.html', error=f"Error processing image with Gemini: {str(e)}")
+                error_message = str(e)
+                # Provide a user-friendly message for common errors
+                if "503" in error_message and "overloaded" in error_message.lower():
+                    friendly_error = "The AI image generation service is currently experiencing high traffic. Please try again in a few minutes."
+                else:
+                    friendly_error = f"Error processing image with Gemini: {str(e)}"
+                
+                return render_template('index.html', error=friendly_error, texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
         
         except Exception as e:
-            return render_template('index.html', error=f"Error processing request: {str(e)}")
+            return render_template('index.html', error=f"Error processing request: {str(e)}", texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
     
-    return render_template('index.html')
+    return render_template('index.html', texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
 
 @app.route('/images/<image_id>')
 def get_image(image_id):
@@ -390,11 +649,14 @@ def temp_files(filename):
 
 @app.route('/gallery')
 def gallery():
+    # Get current language from session or default to English
+    lang = session.get('lang', 'en')
+    
     """Gallery page to display all saved images from Supabase"""
     try:
         supabase_client = get_supabase_client()
         if not supabase_client:
-            return render_template('gallery.html', error="Failed to connect to Supabase storage")
+            return render_template('gallery.html', error="Failed to connect to Supabase storage", texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
         
         # Fetch all images from storage
         original_images = []
@@ -482,7 +744,7 @@ def gallery():
                     supabase_client = get_supabase_client()
                 else:
                     print(f"Error fetching gallery images after {max_retries} attempts: {str(e)}")
-                    return render_template('gallery.html', error=f"Failed to fetch images after {max_retries} attempts")
+                    return render_template('gallery.html', error=f"Failed to fetch images after {max_retries} attempts", texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
             
             except Exception as e:
                 print(f"Error fetching gallery images: {str(e)}")
@@ -490,7 +752,7 @@ def gallery():
                     time.sleep(retry_delay)
                     supabase_client = get_supabase_client()
                 else:
-                    return render_template('gallery.html', error=f"Error fetching images: {str(e)}")
+                    return render_template('gallery.html', error=f"Error fetching images: {str(e)}", texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
         
         # Try to access with MCP for more reliable data
         try:
@@ -584,10 +846,10 @@ def gallery():
         
         image_pairs.sort(key=get_pair_time, reverse=True)
         
-        return render_template('gallery.html', image_pairs=image_pairs)
+        return render_template('gallery.html', image_pairs=image_pairs, texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
     
     except Exception as e:
-        return render_template('gallery.html', error=f"Error retrieving gallery: {str(e)}")
+        return render_template('gallery.html', error=f"Error retrieving gallery: {str(e)}", texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
 
 if __name__ == '__main__':
     app.run(debug=True)

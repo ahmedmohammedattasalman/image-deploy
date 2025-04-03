@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ lang }}" dir="{{ dir }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Professional Image Editor</title>
+    <title>{{ texts.app_name }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -15,6 +15,11 @@
             --dark-color: #212529;
             --success-color: #4cc9f0;
             --border-radius: 12px;
+        }
+        
+        /* Add style to prevent any slide text in the initial preview */
+        #image-preview-container > .text-muted {
+            display: none;
         }
         
         body {
@@ -115,8 +120,16 @@
             touch-action: none;
         }
         
-        .img-comp-overlay {
+        /* RTL support for image comparison slider */
+        html[dir="rtl"] .img-comp-overlay {
+            border-right: none;
+            border-left: 2px solid rgba(255, 255, 255, 0.7);
+            box-shadow: -4px 0px 10px -4px rgba(0,0,0,0.3);
+        }
+        
+        html[dir="ltr"] .img-comp-overlay {
             border-right: 2px solid rgba(255, 255, 255, 0.7);
+            border-left: none;
             box-shadow: 4px 0px 10px -4px rgba(0,0,0,0.3);
         }
 
@@ -127,6 +140,11 @@
             object-fit: contain;
             max-height: 600px;
             pointer-events: none;
+        }
+        
+        .img-comp-overlay {
+            border-right: 2px solid rgba(255, 255, 255, 0.7);
+            box-shadow: 4px 0px 10px -4px rgba(0,0,0,0.3);
         }
 
         .img-comp-slider {
@@ -337,6 +355,12 @@
             border: 2px solid transparent;
         }
         
+        /* Ensure no text appears over the image preview */
+        .image-preview-wrapper::before,
+        .image-preview-wrapper::after {
+            display: none !important;
+        }
+        
         .image-preview-wrapper:hover {
             box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
         }
@@ -365,6 +389,35 @@
         footer a {
             color: var(--success-color);
         }
+        
+        /* Language switcher */
+        .language-switcher {
+            display: flex;
+            align-items: center;
+        }
+        
+        .language-switcher a {
+            color: white;
+            text-decoration: none;
+            padding: 5px 10px;
+            margin-left: 5px;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        
+        .language-switcher a:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        .language-switcher a.active {
+            background-color: rgba(255, 255, 255, 0.3);
+            font-weight: bold;
+        }
+        
+        /* Hide any text with "slide" outside the comparison container */
+        #image-preview-container p:not(#image-comparison-container p) {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
@@ -372,32 +425,41 @@
         <div class="container">
             <a class="navbar-brand" href="/">
                 <i class="fas fa-wand-magic-sparkles me-2"></i>
-                Image Editor
+                {{ texts.app_name }}
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav me-auto">
                     <li class="nav-item">
                         <a class="nav-link active" href="/">
-                            <i class="fas fa-home me-1"></i> Home
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/gallery">
-                            <i class="fas fa-images me-1"></i> Gallery
+                            <i class="fas fa-home me-1"></i> {{ texts.home }}
                         </a>
                     </li>
                 </ul>
+                <div class="language-switcher">
+                    <a href="{{ url_for('set_language', lang='en') }}" class="{{ 'active' if lang == 'en' else '' }}">English</a>
+                    <a href="{{ url_for('set_language', lang='ar') }}" class="{{ 'active' if lang == 'ar' else '' }}">العربية</a>
+                </div>
             </div>
         </div>
     </nav>
 
     <div class="container">
         {% if error %}
-        <div class="error-message">
-            <strong>Error:</strong> {{ error }}
+        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <strong>{{ error }}</strong>
+            {% if "high traffic" in error or "overloaded" in error %}
+            <div class="mt-2">
+                <button type="button" class="btn btn-sm btn-outline-primary" id="retry-btn">
+                    <i class="fas fa-redo me-1"></i>Retry Now
+                </button>
+                <small class="text-muted ms-2">The service is currently busy. Your image is saved and you can try again.</small>
+            </div>
+            {% endif %}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
         {% endif %}
 
@@ -407,30 +469,84 @@
                 <!-- Upload section -->
                 <div class="card">
                     <div class="card-body">
-                        <h5 class="card-title">Upload Your Image</h5>
+                        <h5 class="card-title">{{ texts.upload_image }}</h5>
                         <form method="POST" enctype="multipart/form-data" onsubmit="showLoading()" id="upload-form">
                             <div class="upload-area" onclick="document.getElementById('file').click()">
                                 <i class="fas fa-cloud-upload-alt fa-3x mb-3" style="color: var(--primary-color);"></i>
-                                <p>Drag and drop or click to choose file</p>
+                                <p>{{ texts.drag_drop }}</p>
                                 <input type="file" name="file" id="file" class="d-none" onchange="updateFileName(this); previewImage(this);" accept="image/*">
                                 <div id="file-name"></div>
                             </div>
                             
                             <div id="image-preview-container" class="mt-4" style="display: none;">
-                                <h6>Image Preview:</h6>
+                                <h6>{{ texts.image_preview }}</h6>
+                                
+                                <!-- Remove any text that might be appearing here -->
                                 <div class="image-preview-wrapper" style="max-height: 300px; overflow: hidden; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);">
                                     <img id="image-preview" src="#" alt="Preview" style="width: 100%; max-height: 300px; object-fit: contain;">
+                                </div>
+                                
+                                <!-- Add comparison container that will show after edit -->
+                                <div id="image-comparison-container" class="mt-3" style="display: none;">
+                                    <p class="text-muted small">{{ texts.slide_compare }}</p>
+                                    
+                                    <div class="img-comp-container">
+                                        <div class="img-comp-img">
+                                            <img id="edited-preview" src="#" alt="Edited Image">
+                                        </div>
+                                        <div class="img-comp-img img-comp-overlay">
+                                            <img id="original-preview" src="#" alt="Original Image">
+                                        </div>
+                                        <div class="img-comp-slider">
+                                            <i class="fas fa-arrows-alt-h"></i>
+                                        </div>
+                                        <div class="comparison-labels">
+                                            <div class="comparison-label original-label">{{ texts.original }}</div>
+                                            <div class="comparison-label edited-label">{{ texts.edited }}</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="d-flex justify-content-between mt-3">
+                                        <button class="btn btn-outline-primary btn-sm" id="reset-edit-btn">
+                                            <i class="fas fa-undo me-1"></i>{{ texts.new_image }}
+                                        </button>
+                                        <div>
+                                            <button class="btn btn-outline-success btn-sm me-2" id="continue-edit-btn">
+                                                <i class="fas fa-edit me-1"></i>Continue Editing
+                                            </button>
+                                            <button class="btn btn-primary btn-sm" id="download-edit-btn">
+                                                <i class="fas fa-download me-1"></i>{{ texts.download }}
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                             
                             <div class="mt-4">
-                                <h5 class="card-title">Describe Your Edit</h5>
+                                <h5 class="card-title">{{ texts.describe_edit }}</h5>
                                 <div class="form-group">
-                                    <textarea class="form-control" name="prompt" rows="3" placeholder="Example: Remove the background, Change hair color to blonde, Make it look like a cartoon, etc." required></textarea>
+                                    <!-- Quick edit suggestions -->
+                                    <div class="d-flex flex-wrap gap-1 mb-2">
+                                        <small class="text-muted me-2 d-flex align-items-center">Quick edits:</small>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Make it black and white">B&W</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Add a vintage filter">Vintage</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Make it look like a painting">Painting</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Add a vignette effect">Vignette</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Increase contrast">Contrast</button>
+                                    </div>
+                                    <textarea class="form-control" name="prompt" rows="3" placeholder="{{ texts.prompt_placeholder }}" required></textarea>
                                 </div>
-                                <button type="submit" class="btn btn-primary w-100 mt-3">
-                                    <i class="fas fa-magic me-2"></i>Generate Edited Image
+                                <button type="submit" class="btn btn-primary w-100 mt-3" id="generate-btn">
+                                    <i class="fas fa-magic me-2"></i>{{ texts.generate_button }}
                                 </button>
+                                <button type="submit" class="btn btn-primary w-100 mt-3" id="continue-btn" style="display: none;">
+                                    <i class="fas fa-edit me-2"></i>Continue Editing
+                                </button>
+                                <input type="hidden" name="continue_edit" id="continue-edit-input" value="false">
+                                <input type="hidden" name="previous_result_b64" id="previous-result-b64" value="{{ result_image_b64 if result_image_b64 else '' }}">
+                                <input type="hidden" name="original_image_b64" id="original-image-b64" value="{{ original_image_b64 if original_image_b64 else '' }}">
+                                <input type="hidden" name="first_original_b64" id="first-original-b64" value="{{ first_original_b64 if first_original_b64 else '' }}">
+                                <input type="hidden" name="previous_prompts" id="previous-prompts" value='{{ previous_prompts_json if previous_prompts_json else "[]" }}'>
                             </div>
                         </form>
                     </div>
@@ -439,8 +555,8 @@
                 <!-- Image comparison section -->
                 <div class="card mb-4">
                     <div class="card-body">
-                        <h5 class="card-title">Your Edited Image</h5>
-                        <p class="text-muted small">Slide to compare before and after</p>
+                        <h5 class="card-title">{{ texts.edited_image }}</h5>
+                        <p class="text-muted small">{{ texts.slide_compare }}</p>
                         
                         <div class="img-comp-container">
                             <div class="img-comp-img">
@@ -453,41 +569,41 @@
                                 <i class="fas fa-arrows-alt-h"></i>
                             </div>
                             <div class="comparison-labels">
-                                <div class="comparison-label original-label">Original</div>
-                                <div class="comparison-label edited-label">Edited</div>
+                                <div class="comparison-label original-label">{{ texts.original }}</div>
+                                <div class="comparison-label edited-label">{{ texts.edited }}</div>
                             </div>
                         </div>
                         
                         <div class="d-flex justify-content-between mt-3">
                             <button class="btn btn-outline-primary" onclick="window.location.href='/'">
-                                <i class="fas fa-plus me-2"></i>New Image
+                                <i class="fas fa-plus me-2"></i>{{ texts.new_image }}
                             </button>
                             <a href="{% if is_b64_image %}javascript:void(0);{% elif is_temp_file %}{{ url_for('temp_files', filename=result_image.split('/')[-1]) }}{% else %}{{ url_for('static', filename=result_image) }}{% endif %}" 
                                {% if is_b64_image %}onclick="downloadBase64Image('edited-image.png', '{{ result_image_b64 }}');"{% else %}download="edited-image.png"{% endif %}
                                class="btn btn-primary">
-                                <i class="fas fa-download me-2"></i>Download
+                                <i class="fas fa-download me-2"></i>{{ texts.download }}
                             </a>
                         </div>
                         
                         {% if response_text %}
                         <div class="result-text mt-4">
-                            <h6><i class="fas fa-robot me-2"></i>AI Response:</h6>
+                            <h6><i class="fas fa-robot me-2"></i>{{ texts.ai_response }}</h6>
                             <p>{{ response_text }}</p>
                         </div>
                         {% endif %}
                         
                         {% if supabase_original_url or supabase_edited_url %}
                         <div class="supabase-info mt-3">
-                            <h6><i class="fas fa-cloud me-2"></i>Cloud Storage Links:</h6>
+                            <h6><i class="fas fa-cloud me-2"></i>{{ texts.cloud_storage }}</h6>
                             {% if supabase_edited_url %}
                             <div class="d-flex align-items-center mb-2">
-                                <span class="badge bg-primary me-2">Edited</span>
+                                <span class="badge bg-primary me-2">{{ texts.edited }}</span>
                                 <a href="{{ supabase_edited_url }}" target="_blank" class="text-truncate">{{ supabase_edited_url }}</a>
                             </div>
                             {% endif %}
                             {% if supabase_original_url %}
                             <div class="d-flex align-items-center">
-                                <span class="badge bg-secondary me-2">Original</span>
+                                <span class="badge bg-secondary me-2">{{ texts.original }}</span>
                                 <a href="{{ supabase_original_url }}" target="_blank" class="text-truncate">{{ supabase_original_url }}</a>
                             </div>
                             {% endif %}
@@ -495,20 +611,51 @@
                         {% endif %}
                         
                         <div class="prompt-container">
-                            <h5 class="card-title">Continue Editing</h5>
-                            <form method="POST" enctype="multipart/form-data" onsubmit="showLoading()" id="continue-edit-form">
-                                <input type="hidden" name="continue_edit" value="true">
-                                <!-- Store previous result for continued editing -->
-                                <input type="hidden" name="previous_result_b64" value="{{ result_image_b64 }}">
-                                <input type="hidden" name="original_image_b64" value="{{ original_image_b64 }}">
-                                <input type="hidden" name="first_original_b64" value="{{ first_original_b64|default(original_image_b64) }}">
-                                <div class="form-group">
-                                    <textarea class="form-control" name="prompt" rows="3" placeholder="Describe your next edit. Example: Now make it black and white, Add a vintage filter, etc." required></textarea>
+                            <h5 class="card-title">{{ texts.continue_editing }}</h5>
+                            <div class="card mb-3 border-primary bg-light">
+                                <div class="card-body">
+                                    <p class="card-text text-muted small mb-2">
+                                        <i class="fas fa-lightbulb me-1 text-warning"></i> 
+                                        You can continue refining your image with additional edits. Each edit builds on the previous result.
+                                    </p>
+                                    
+                                    <!-- Edit history section -->
+                                    {% if previous_prompts %}
+                                    <div class="edit-history mb-3">
+                                        <p class="small fw-bold mb-1"><i class="fas fa-history me-1"></i> Edit History:</p>
+                                        <ol class="small ps-3 text-muted">
+                                            {% for prev_prompt in previous_prompts %}
+                                            <li>{{ prev_prompt }}</li>
+                                            {% endfor %}
+                                        </ol>
+                                    </div>
+                                    {% endif %}
+                                    
+                                    <form method="POST" enctype="multipart/form-data" onsubmit="showLoading()" id="continue-edit-form">
+                                        <input type="hidden" name="continue_edit" value="true">
+                                        <!-- Store previous result for continued editing -->
+                                        <input type="hidden" name="previous_result_b64" value="{{ result_image_b64 }}">
+                                        <input type="hidden" name="original_image_b64" value="{{ original_image_b64 }}">
+                                        <input type="hidden" name="first_original_b64" value="{{ first_original_b64|default(original_image_b64) }}">
+                                        <input type="hidden" name="previous_prompts" value="{{ previous_prompts_json|default('[]') }}">
+                                        <div class="form-group">
+                                            <!-- Quick edit suggestions -->
+                                            <div class="d-flex flex-wrap gap-1 mb-2">
+                                                <small class="text-muted me-2 d-flex align-items-center">Quick edits:</small>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Make it black and white">B&W</button>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Add a vintage filter">Vintage</button>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Make it look like a painting">Painting</button>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Add a vignette effect">Vignette</button>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary quick-edit-btn" data-prompt="Increase contrast">Contrast</button>
+                                            </div>
+                                            <textarea class="form-control border-primary" name="prompt" rows="3" placeholder="{{ texts.continue_prompt }}" required></textarea>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary w-100 mt-3">
+                                            <i class="fas fa-magic me-2"></i>{{ texts.apply_next }}
+                                        </button>
+                                    </form>
                                 </div>
-                                <button type="submit" class="btn btn-primary w-100 mt-3">
-                                    <i class="fas fa-magic me-2"></i>Apply Next Edit
-                                </button>
-                            </form>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -518,20 +665,7 @@
                     <div class="spinner-border" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
-                    <p class="mt-2">Processing your image with AI... This may take a moment</p>
-                </div>
-                
-                <!-- Gallery section -->
-                <div class="gallery-container">
-                    <h4 class="gallery-heading">Your Gallery</h4>
-                    <div class="row" id="gallery-items">
-                        <!-- Gallery items will be dynamically added here -->
-                    </div>
-                    <div class="empty-gallery" id="empty-gallery">
-                        <i class="fas fa-images"></i>
-                        <h5>Your gallery is empty</h5>
-                        <p>Edited images will appear here</p>
-                    </div>
+                    <p class="mt-2">{{ texts.processing }}</p>
                 </div>
                 
                 {% if original_image_b64 and result_image_b64 %}
@@ -553,13 +687,17 @@
 
     <footer class="text-center">
         <div class="container">
-            <p>Powered by Google Gemini AI | Images stored with <a href="https://supabase.com" target="_blank">Supabase</a></p>
+            <p>{{ texts.powered_by }} <a href="https://supabase.com" target="_blank">Supabase</a></p>
         </div>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Image comparison slider
+        // Store the page direction for JavaScript use
+        const pageDir = document.documentElement.dir || 'ltr';
+        const isRTL = pageDir === 'rtl';
+        
+        // Image comparison slider with RTL support
         function initComparisonSlider() {
             const slider = document.querySelector(".img-comp-slider");
             const container = document.querySelector(".img-comp-container");
@@ -635,7 +773,16 @@
                 
                 try {
                     const x = e.type === "touchmove" ? e.touches[0].clientX : e.clientX;
-                    const pos = (x - startX) + parseInt(slider.style.left || "0");
+                    let pos = (x - startX) + parseInt(slider.style.left || "0");
+                    
+                    // For RTL, we need to invert the effect of the movement
+                    if (isRTL) {
+                        // In RTL, the original image is on right and edited on left, so adjust movement
+                        const delta = x - startX;
+                        pos = parseInt(slider.style.left || "0") - delta;
+                    } else {
+                        pos = (x - startX) + parseInt(slider.style.left || "0");
+                    }
                     
                     // Constrain within bounds
                     if (pos < 0) {
@@ -692,108 +839,6 @@
             });
         }
         
-        // Gallery management (updated for Base64)
-        class Gallery {
-            constructor() {
-                this.items = JSON.parse(localStorage.getItem('gallery') || '[]');
-                this.container = document.getElementById('gallery-items');
-                this.emptyMessage = document.getElementById('empty-gallery');
-                
-                // Fix any broken items (those without data URI prefix)
-                this.items = this.items.map(item => {
-                    // Fix original image source if needed
-                    if (item.originalImage && item.originalImage.indexOf('data:') !== 0 && item.originalImage.indexOf('http') !== 0) {
-                        if (item.originalImage.indexOf('base64,') === -1) {
-                            item.originalImage = 'data:image/png;base64,' + item.originalImage;
-                        }
-                    }
-                    
-                    // Fix result image source if needed
-                    if (item.resultImage && item.resultImage.indexOf('data:') !== 0 && item.resultImage.indexOf('http') !== 0) {
-                        if (item.resultImage.indexOf('base64,') === -1) {
-                            item.resultImage = 'data:image/png;base64,' + item.resultImage;
-                        }
-                    }
-                    
-                    return item;
-                });
-                
-                // Save fixed items
-                this.save();
-            }
-            
-            add(imageData) {
-                if (!imageData) return;
-                
-                const newItem = {
-                    id: Date.now(),
-                    originalImage: imageData.original,
-                    resultImage: imageData.result,
-                    prompt: imageData.prompt,
-                    date: new Date().toISOString()
-                };
-                
-                this.items.unshift(newItem);
-                this.save();
-                this.render();
-            }
-            
-            remove(id) {
-                this.items = this.items.filter(item => item.id !== id);
-                this.save();
-                this.render();
-            }
-            
-            save() {
-                localStorage.setItem('gallery', JSON.stringify(this.items));
-            }
-            
-            render() {
-                if (!this.container) return;
-                
-                this.container.innerHTML = '';
-                
-                if (this.items.length === 0) {
-                    this.emptyMessage.style.display = 'block';
-                    return;
-                }
-                
-                this.emptyMessage.style.display = 'none';
-                
-                this.items.forEach(item => {
-                    const date = new Date(item.date);
-                    const formattedDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
-                    
-                    const col = document.createElement('div');
-                    col.className = 'col-md-6 col-lg-4';
-                    
-                    col.innerHTML = `
-                        <div class="gallery-item">
-                            <img src="${item.resultImage}" alt="Edited image">
-                            <div class="gallery-item-overlay">
-                                <h6>Edit #${item.id}</h6>
-                                <p class="small">${item.prompt.substring(0, 50)}${item.prompt.length > 50 ? '...' : ''}</p>
-                                <div class="small text-muted">${formattedDate}</div>
-                            </div>
-                            <div class="gallery-item-actions">
-                                <div class="gallery-action-btn" onclick="gallery.remove(${item.id})">
-                                    <i class="fas fa-trash-alt"></i>
-                                </div>
-                                <a class="gallery-action-btn" href="${item.resultImage}" download="edit-${item.id}.png">
-                                    <i class="fas fa-download"></i>
-                                </a>
-                            </div>
-                        </div>
-                    `;
-                    
-                    this.container.appendChild(col);
-                });
-            }
-        }
-        
-        // Instantiate gallery
-        const gallery = new Gallery();
-        
         function updateFileName(input) {
             const fileName = input.files[0]?.name || '';
             document.getElementById('file-name').textContent = fileName;
@@ -802,6 +847,7 @@
         function previewImage(input) {
             const preview = document.getElementById('image-preview');
             const previewContainer = document.getElementById('image-preview-container');
+            const comparisonContainer = document.getElementById('image-comparison-container');
             
             if (input.files && input.files[0]) {
                 const reader = new FileReader();
@@ -809,6 +855,19 @@
                 reader.onload = function(e) {
                     preview.src = e.target.result;
                     previewContainer.style.display = 'block';
+                    
+                    // Ensure comparison container is hidden when showing initial preview
+                    if (comparisonContainer) {
+                        comparisonContainer.style.display = 'none';
+                    }
+                    
+                    // Remove any text elements that might be appearing over the preview
+                    const slideTexts = previewContainer.querySelectorAll('.text-muted');
+                    slideTexts.forEach(function(text) {
+                        if (text.closest('#image-comparison-container') === null) {
+                            text.style.display = 'none';
+                        }
+                    });
                 };
                 
                 reader.readAsDataURL(input.files[0]);
@@ -843,7 +902,7 @@
             });
             
             ['dragleave', 'drop'].forEach(eventName => {
-                uploadArea.addEventListener(eventName, unhighlight, false);
+                uploadArea.addEventListener("${eventName}", unhighlight, false);
             });
             
             function highlight() {
@@ -864,19 +923,6 @@
                     document.getElementById('file').files = files;
                     updateFileName(document.getElementById('file'));
                 }
-            }
-        }
-        
-        // Save to gallery when result is shown
-        function saveToGallery() {
-            const dataElement = document.getElementById('current-edit-data');
-            if (dataElement) {
-                const imageData = {
-                    original: dataElement.dataset.original,
-                    result: dataElement.dataset.result,
-                    prompt: dataElement.dataset.prompt
-                };
-                gallery.add(imageData);
             }
         }
         
@@ -912,6 +958,10 @@
             const previewContainer = document.getElementById('image-preview-container');
             if (!previewContainer) return;
             
+            // Remove any existing p tags when the preview is shown initially
+            const existingParagraphs = previewContainer.querySelectorAll('p:not(#image-comparison-container p)');
+            existingParagraphs.forEach(p => p.style.display = 'none');
+            
             previewContainer.addEventListener('dragover', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -935,6 +985,10 @@
                     fileInput.files = files;
                     updateFileName(fileInput);
                     previewImage(fileInput);
+                    
+                    // Hide any slide text again after drop
+                    const paragraphs = previewContainer.querySelectorAll('p:not(#image-comparison-container p)');
+                    paragraphs.forEach(p => p.style.display = 'none');
                 }
             });
         }
@@ -955,9 +1009,513 @@
             initComparisonSlider();
             setupSliderContainerEvents();
             setupImagePreviewDragDrop();
-            gallery.render();
-            saveToGallery();
+            setupEditPreviewHandlers();
+            setupQuickEditButtons();
+            setupFormSubmissions();
+            setupRetryButton();
+            
+            // Check if there's an existing result image displayed (server-side rendering)
+            const resultImg = document.querySelector('.img-comp-container .img-comp-img img[alt="Edited Image"]');
+            if (resultImg && resultImg.src) {
+                const generateButton = document.getElementById('generate-btn');
+                const continueButton = document.getElementById('continue-btn');
+                const continueEditInput = document.getElementById('continue-edit-input');
+                
+                if (generateButton && continueButton) {
+                    // If we're on the results page, swap the buttons
+                    if (document.querySelector('.card-title')?.textContent.includes('Edited Image')) {
+                        generateButton.style.display = 'none';
+                        continueButton.style.display = 'block';
+                        if (continueEditInput) {
+                            continueEditInput.value = 'true';
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Handle edit preview functionality
+        function setupEditPreviewHandlers() {
+            // Get elements
+            const generateButton = document.getElementById('generate-btn');
+            const continueButton = document.getElementById('continue-btn');
+            const continueEditInput = document.getElementById('continue-edit-input');
+            const previewContainer = document.getElementById('image-preview-container');
+            const comparisonContainer = document.getElementById('image-comparison-container');
+            const originalPreview = document.getElementById('original-preview');
+            const editedPreview = document.getElementById('edited-preview');
+            const resetButton = document.getElementById('reset-edit-btn');
+            const continueEditButton = document.getElementById('continue-edit-btn');
+            const downloadButton = document.getElementById('download-edit-btn');
+            const promptTextarea = document.querySelector('textarea[name="prompt"]');
+            const imagePreview = document.getElementById('image-preview');
+            
+            if (!generateButton || !previewContainer) return;
+            
+            // Check if we need to show the continue button (if there's already a comparison active)
+            if (comparisonContainer && comparisonContainer.style.display === 'block' && editedPreview && editedPreview.src) {
+                generateButton.style.display = 'none';
+                continueButton.style.display = 'block';
+                continueEditInput.value = 'true';
+            }
+            
+            // Handle generate button click
+            generateButton.addEventListener('click', function(e) {
+                // Only handle client-side preview - actual processing happens on server
+                if (imagePreview && imagePreview.src && imagePreview.src !== '#') {
+                    // Store the original image for comparison
+                    if (originalPreview) {
+                        originalPreview.src = imagePreview.src;
+                    }
+                }
+            });
+            
+            // Handle reset button
+            if (resetButton) {
+                resetButton.addEventListener('click', function() {
+                    // Hide comparison container and reset form
+                    if (comparisonContainer) {
+                        comparisonContainer.style.display = 'none';
+                    }
+                    
+                    // Clear prompt
+                    if (promptTextarea) {
+                        promptTextarea.value = '';
+                    }
+                    
+                    // Reset file input and image preview
+                    const fileInput = document.getElementById('file');
+                    if (fileInput) {
+                        fileInput.value = '';
+                        document.getElementById('file-name').textContent = '';
+                    }
+                    
+                    // Redirect to the home page to start fresh
+                    window.location.href = '/';
+                });
+            }
+            
+            // Handle continue edit button
+            if (continueEditButton) {
+                continueEditButton.addEventListener('click', function() {
+                    // Scroll to the prompt input
+                    const promptContainer = document.querySelector('.mt-4 .form-group');
+                    if (promptContainer) {
+                        // Ensure the prompt textarea is visible
+                        promptContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        
+                        // Focus on textarea and suggest continuing the edit
+                        if (promptTextarea) {
+                            promptTextarea.focus();
+                            if (promptTextarea.value === '') {
+                                promptTextarea.placeholder = "Describe how to further edit the image. For example: 'Now make it black and white' or 'Add a vintage filter'";
+                            }
+                        }
+                        
+                        // Change the generate button text to "Continue Editing" and show it
+                        if (generateButton && continueButton) {
+                            generateButton.innerHTML = '<i class="fas fa-edit me-2"></i>Continue Editing';
+                            generateButton.style.display = 'block';
+                            continueButton.style.display = 'none';
+                            continueEditInput.value = 'true';
+                        }
+                    }
+                });
+            }
+            
+            // Handle download button
+            if (downloadButton) {
+                downloadButton.addEventListener('click', function() {
+                    if (editedPreview && editedPreview.src && editedPreview.src !== '#') {
+                        // Extract base64 data if it exists
+                        let imgSrc = editedPreview.src;
+                        if (imgSrc.startsWith('data:image')) {
+                            // Download image
+                            const link = document.createElement('a');
+                            link.href = imgSrc;
+                            link.download = 'edited-image.png';
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                        }
+                    }
+                });
+            }
+        }
+
+        // Function to compress image on the client side before submission
+        function compressImage(img, maxWidth = 1000, quality = 0.7) {
+            return new Promise((resolve) => {
+                // Create a canvas to resize the image
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                
+                // Calculate new dimensions while maintaining aspect ratio
+                if (width > maxWidth) {
+                    height = Math.round(height * (maxWidth / width));
+                    width = maxWidth;
+                }
+                
+                // For very large images, apply additional reduction
+                if (width * height > 3000000) { // > 3 megapixels
+                    const scale = Math.sqrt(3000000 / (width * height));
+                    width = Math.floor(width * scale);
+                    height = Math.floor(height * scale);
+                }
+                
+                // Set canvas dimensions and draw resized image
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                
+                // Apply some smoothing to help compression
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Check if the image is still too large by estimating size
+                // If it might be too large, reduce quality further
+                const estimatedSize = width * height * 4 / 1024 / 1024; // Rough MB estimate
+                const finalQuality = estimatedSize > 4 ? 0.5 : quality;
+                
+                // Convert to compressed data URL
+                canvas.toBlob((blob) => {
+                    if (blob.size > 5 * 1024 * 1024) { // If still > 5MB
+                        // Try again with lower quality
+                        const reader = new FileReader();
+                        reader.onloadend = function() {
+                            const tempImg = new Image();
+                            tempImg.onload = function() {
+                                compressImage(tempImg, Math.floor(maxWidth * 0.8), 0.5)
+                                    .then(resolve);
+                            };
+                            tempImg.src = reader.result;
+                        };
+                        reader.readAsDataURL(blob);
+                    } else {
+                        const reader = new FileReader();
+                        reader.onloadend = function() {
+                            resolve(reader.result);
+                        };
+                        reader.readAsDataURL(blob);
+                    }
+                }, 'image/jpeg', finalQuality);
+            });
+        }
+        
+        // Function to update preview with edited image
+        function updateEditedPreview(editedImageSrc) {
+            const comparisonContainer = document.getElementById('image-comparison-container');
+            const editedPreview = document.getElementById('edited-preview');
+            const originalPreview = document.getElementById('original-preview');
+            const generateButton = document.getElementById('generate-btn');
+            const continueButton = document.getElementById('continue-btn');
+            const continueEditInput = document.getElementById('continue-edit-input');
+            const previousResultInput = document.getElementById('previous-result-b64');
+            const originalImageInput = document.getElementById('original-image-b64');
+            
+            if (comparisonContainer && editedPreview) {
+                editedPreview.src = editedImageSrc;
+                comparisonContainer.style.display = 'block';
+                
+                // Switch the buttons
+                if (generateButton && continueButton) {
+                    generateButton.style.display = 'none';
+                    continueButton.style.display = 'block';
+                    if (continueEditInput) {
+                        continueEditInput.value = 'true';
+                    }
+                }
+                
+                // Update hidden fields for continued editing with aggressive compression
+                if (previousResultInput && editedImageSrc) {
+                    // Create temp image and compress aggressively for form submission
+                    const tempImg = new Image();
+                    tempImg.onload = async function() {
+                        // Always compress to reduce form submission size
+                        const compressedSrc = await compressImage(tempImg, 1000, 0.6);
+                        if (compressedSrc) {
+                            const base64Data = compressedSrc.split(',')[1];
+                            if (base64Data) {
+                                previousResultInput.value = base64Data;
+                            }
+                        }
+                    };
+                    tempImg.src = editedImageSrc;
+                }
+                
+                if (originalImageInput && originalPreview && originalPreview.src) {
+                    // Create temp image and compress
+                    const tempImg = new Image();
+                    tempImg.onload = async function() {
+                        // Always compress to reduce form submission size
+                        const compressedSrc = await compressImage(tempImg, 1000, 0.6);
+                        if (compressedSrc) {
+                            const base64Data = compressedSrc.split(',')[1];
+                            if (base64Data) {
+                                originalImageInput.value = base64Data;
+                            }
+                        }
+                    };
+                    tempImg.src = originalPreview.src;
+                }
+                
+                // Initialize the comparison slider
+                initComparisonSlider();
+                setupSliderContainerEvents();
+            }
+        }
+
+        // Fix for slide text appearing in preview
+        document.addEventListener('DOMContentLoaded', function() {
+            // Function to remove any slide text from the preview area
+            function removeSlideTextFromPreview() {
+                const previewContainer = document.getElementById('image-preview-container');
+                if (!previewContainer) return;
+                
+                // Look for any text nodes or elements containing "slide" or "compare"
+                const walker = document.createTreeWalker(
+                    previewContainer,
+                    NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+                    null,
+                    false
+                );
+                
+                let node;
+                while (node = walker.nextNode()) {
+                    // If it's an element with text content about sliding
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        if (node.closest('#image-comparison-container')) continue;
+                        
+                        if (node.textContent.toLowerCase().includes('slide') || 
+                            node.textContent.toLowerCase().includes('compare')) {
+                            if (node.tagName === 'P' || node.tagName === 'SPAN' || node.tagName === 'DIV') {
+                                node.style.display = 'none';
+                            }
+                        }
+                    }
+                    // If it's a text node containing slide text
+                    else if (node.nodeType === Node.TEXT_NODE) {
+                        if (node.parentElement.closest('#image-comparison-container')) continue;
+                        
+                        if (node.textContent.toLowerCase().includes('slide') || 
+                            node.textContent.toLowerCase().includes('compare')) {
+                            node.textContent = '';
+                        }
+                    }
+                }
+            }
+            
+            // Run on page load
+            removeSlideTextFromPreview();
+            
+            // Also run when any file is uploaded
+            const fileInput = document.getElementById('file');
+            if (fileInput) {
+                fileInput.addEventListener('change', function() {
+                    // Give a slight delay to ensure the DOM is updated
+                    setTimeout(removeSlideTextFromPreview, 100);
+                });
+            }
+        });
+
+        // Handle quick edit suggestion buttons
+        function setupQuickEditButtons() {
+            const quickEditButtons = document.querySelectorAll('.quick-edit-btn');
+            
+            quickEditButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const prompt = this.getAttribute('data-prompt');
+                    const textArea = this.closest('.form-group').querySelector('textarea');
+                    
+                    if (textArea) {
+                        textArea.value = prompt;
+                        textArea.focus();
+                    }
+                });
+            });
+        }
+
+        // Set up form submissions with image compression
+        function setupFormSubmissions() {
+            // Helper function to compress all images in a form
+            async function compressFormImages(form) {
+                const previousResultInput = form.querySelector('input[name="previous_result_b64"]');
+                const originalImageInput = form.querySelector('input[name="original_image_b64"]');
+                const firstOriginalInput = form.querySelector('input[name="first_original_b64"]');
+                
+                // Array of promises for all compression operations
+                const compressionPromises = [];
+                
+                // Helper to compress a specific input's image data
+                const compressInputImage = async (input) => {
+                    if (!input || !input.value) return Promise.resolve();
+                    
+                    try {
+                        // Create image from base64
+                        const img = new Image();
+                        const loadPromise = new Promise((resolve) => {
+                            img.onload = resolve;
+                            img.onerror = resolve; // Continue even if error
+                        });
+                        
+                        // Use data URI with the base64 data
+                        img.src = input.value.includes('base64,') 
+                            ? input.value 
+                            : `data:image/png;base64,${input.value}`;
+                        
+                        // Wait for image to load
+                        await loadPromise;
+                        
+                        // Skip if image failed to load
+                        if (img.width === 0 || img.height === 0) return;
+                        
+                        // Apply aggressive compression for all images
+                        const compressedSrc = await compressImage(img, 1000, 0.6);
+                        if (compressedSrc) {
+                            const base64Data = compressedSrc.split(',')[1];
+                            if (base64Data) {
+                                input.value = base64Data;
+                            }
+                        }
+                    } catch (err) {
+                        console.error("Error compressing image:", err);
+                        // Continue with uncompressed image if compression fails
+                    }
+                };
+                
+                // Compress all images asynchronously
+                if (previousResultInput) {
+                    compressionPromises.push(compressInputImage(previousResultInput));
+                }
+                if (originalImageInput) {
+                    compressionPromises.push(compressInputImage(originalImageInput));
+                }
+                if (firstOriginalInput) {
+                    compressionPromises.push(compressInputImage(firstOriginalInput));
+                }
+                
+                // Wait for all compressions to complete
+                await Promise.all(compressionPromises);
+            }
+            
+            // Handle main form submission
+            const mainForm = document.getElementById('upload-form');
+            if (mainForm) {
+                mainForm.addEventListener('submit', async function(e) {
+                    // Check if we're continuing an edit (has hidden fields)
+                    const continueEdit = document.getElementById('continue-edit-input');
+                    if (continueEdit && continueEdit.value === 'true') {
+                        e.preventDefault();
+                        
+                        // Show loading indicator
+                        showLoading();
+                        
+                        try {
+                            // Compress all images in the form
+                            await compressFormImages(mainForm);
+                            
+                            // Submit the form
+                            mainForm.submit();
+                        } catch (err) {
+                            console.error("Error during form submission:", err);
+                            // Submit anyway to avoid blocking the user
+                            mainForm.submit();
+                        }
+                    } else {
+                        // For initial uploads, we don't need to compress here
+                        // The server will handle compression
+                        showLoading();
+                    }
+                });
+            }
+            
+            // Handle continue edit form on the results page
+            const continueForm = document.getElementById('continue-edit-form');
+            if (continueForm) {
+                continueForm.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    
+                    // Show loading indicator
+                    showLoading();
+                    
+                    try {
+                        // Compress all images in the form
+                        await compressFormImages(continueForm);
+                        
+                        // Submit the form
+                        continueForm.submit();
+                    } catch (err) {
+                        console.error("Error during form submission:", err);
+                        // Submit anyway to avoid blocking the user
+                        continueForm.submit();
+                    }
+                });
+            }
+        }
+
+        // Set up retry button for API errors
+        function setupRetryButton() {
+            const retryBtn = document.getElementById('retry-btn');
+            if (!retryBtn) return;
+            
+            retryBtn.addEventListener('click', function() {
+                // Show the loading indicator
+                showLoading();
+                
+                // Get form elements
+                const form = document.getElementById('upload-form');
+                const generateBtn = document.getElementById('generate-btn');
+                const continueBtn = document.getElementById('continue-btn');
+                
+                // Determine which button to use and click it
+                if (continueBtn && continueBtn.style.display !== 'none') {
+                    continueBtn.click();
+                } else if (generateBtn) {
+                    // Either submit the form or click the button
+                    if (form) {
+                        form.submit();
+                    } else {
+                        generateBtn.click();
+                    }
+                }
+            });
+        }
+    </script>
+    
+    {% if update_preview and original_image_b64 and result_image_b64 %}
+    <script>
+        // Execute when document is ready for preview update
+        document.addEventListener('DOMContentLoaded', function() {
+            // Update the preview comparison
+            const imagePreviewContainer = document.getElementById('image-preview-container');
+            const comparisonContainer = document.getElementById('image-comparison-container');
+            const originalPreview = document.getElementById('original-preview');
+            const editedPreview = document.getElementById('edited-preview');
+            
+            if (imagePreviewContainer && comparisonContainer && originalPreview && editedPreview) {
+                // Show the preview container
+                imagePreviewContainer.style.display = 'block';
+                
+                // Set original image
+                originalPreview.src = 'data:image/png;base64,{{ original_image_b64 }}';
+                
+                // Set edited image
+                editedPreview.src = 'data:image/png;base64,{{ result_image_b64 }}';
+                
+                // Show comparison container
+                comparisonContainer.style.display = 'block';
+                
+                // Initialize slider for the preview
+                setTimeout(function() {
+                    if (typeof initComparisonSlider === 'function') {
+                        initComparisonSlider();
+                    }
+                }, 100);
+            }
         });
     </script>
+    {% endif %}
 </body>
 </html> 
