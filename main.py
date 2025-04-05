@@ -130,7 +130,7 @@ except Exception as e:
     print(f"MAIN.PY ERROR during emergency patching: {e}")
 
 # Now continue with the regular imports
-import os 
+import os
 import tempfile
 import uuid
 import importlib
@@ -147,7 +147,7 @@ import re
 import textwrap
 # Supabase compatibility layer - try different package names
 try:
-    from supabase import create_client
+from supabase import create_client
     print("Using supabase package")
 except ImportError:
     try:
@@ -567,26 +567,26 @@ def store_image_supabase(image, image_type="original"):
                 # Verify upload method exists
                 if not hasattr(bucket, 'upload'):
                     raise ValueError("Bucket object missing 'upload' method")
-                
-                # Upload the file to Supabase Storage with retry mechanism
+            
+            # Upload the file to Supabase Storage with retry mechanism
                 response = bucket.upload(
-                    file_path, 
-                    img_bytes, 
-                    {"content-type": "image/png"}
-                )
-                
+                file_path, 
+                img_bytes, 
+                {"content-type": "image/png"}
+            )
+            
                 # Verify get_public_url method exists
                 if not hasattr(bucket, 'get_public_url'):
                     raise ValueError("Bucket object missing 'get_public_url' method")
                 
-                # Get public URL
+            # Get public URL
                 public_url = bucket.get_public_url(file_path)
-                
-                # Skip database insertion for now as the table might not exist
-                # Instead, just return the successful upload information
-                print(f"Successfully uploaded image to {file_path}")
-                
-                return image_id, public_url
+            
+            # Skip database insertion for now as the table might not exist
+            # Instead, just return the successful upload information
+            print(f"Successfully uploaded image to {file_path}")
+            
+            return image_id, public_url
             except Exception as storage_err:
                 print(f"Supabase storage error: {str(storage_err)}")
                 # Fall back to local storage as a last resort
@@ -624,7 +624,7 @@ def store_image_supabase(image, image_type="original"):
                     return image_id, local_url
                 except Exception as local_err:
                     print(f"Even local storage failed: {str(local_err)}")
-                    return None, None
+                return None, None
         
         except Exception as e:
             print(f"Error storing image in Supabase: {str(e)}")
@@ -645,7 +645,7 @@ def store_image_supabase(image, image_type="original"):
                     return image_id, local_url
                 except Exception as local_err:
                     print(f"Even local storage failed: {str(local_err)}")
-                    return None, None
+                return None, None
 
 # Helper to get image from Supabase
 def get_image_from_supabase(image_id):
@@ -938,14 +938,17 @@ After generating the edited image, briefly explain what changes you made."""
                                 "data": base64.b64encode(img_byte_arr.getvalue()).decode('utf-8')
                             }
                             
-                            # ONLY use gemini-2.0-flash-exp-image-generation as requested
+                            # --- ULTRA-SIMPLIFIED PROMPT ---
+                            # Remove ANY request for text explanation. Only demand the edited image.
                             model_name = "gemini-2.0-flash-exp-image-generation"
                             print(f"Using model: {model_name} for image editing")
                             
-                            # Simplified and very explicit prompt for this model
-                            enhanced_prompt = f\"\"\"TASK: Edit the provided image.
+                            # --- ULTRA-SIMPLIFIED PROMPT ---
+                            # Remove ANY request for text explanation. Only demand the edited image.
+                            enhanced_prompt = f"""TASK: Edit the provided image.
 INSTRUCTION: {prompt}
-OUTPUT: Return ONLY the edited image. No additional text is required unless specifically asked for in the instruction.\"\"\"
+OUTPUT: Return ONLY the edited image based on the instruction."""
+                            # --- END ULTRA-SIMPLIFIED PROMPT ---
                             
                             # Prepare the content parts
                             content_parts = [
@@ -955,7 +958,7 @@ OUTPUT: Return ONLY the edited image. No additional text is required unless spec
                             
                             # --- Direct API Call using GenerativeModel ---
                             try:
-                                print(f"Attempting API call with model: {model_name}")
+                                print(f"Attempting API call with model: {model_name} using ultra-simplified prompt.")
                                 model = google.generativeai.GenerativeModel(model_name)
                                 
                                 # Make the API call using generate_content
@@ -1131,7 +1134,7 @@ OUTPUT: Return ONLY the edited image. No additional text is required unless spec
                                                         break # Found image, exit parts loop
                                                     except Exception as img_err:
                                                         print(f"      ERROR processing image data: {str(img_err)}")
-                                                else:
+                            else:
                                                      print(f"      Image data is not a string (type: {type(image_data)}). Skipping.")
                                             else:
                                                 print("      No 'data' attribute found within inline_data.")
@@ -1187,7 +1190,7 @@ OUTPUT: Return ONLY the edited image. No additional text is required unless spec
                                                 img_bytes = part.inline_data.data
                                                 img_buffer = BytesIO(img_bytes)
                                                 result_image = Image.open(img_buffer)
-                                                result_image_b64 = image_to_base64(result_image)
+                                            result_image_b64 = image_to_base64(result_image)
                                             except Exception as inner_img_err:
                                                 print(f"Inner image extraction error: {str(inner_img_err)}")
                     except Exception as inner_e:
