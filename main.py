@@ -929,7 +929,7 @@ After generating the edited image, briefly explain what changes you made."""
                                 
                             # Save image to bytes for reliable handling
                             img_byte_arr = BytesIO()
-                            image.save(img_byte_arr, format='JPEG', quality=90) 
+                            image.save(img_byte_arr, format='JPEG', quality=95) 
                             img_byte_arr.seek(0)
                             
                             # Create a properly formatted image part for Gemini
@@ -938,21 +938,71 @@ After generating the edited image, briefly explain what changes you made."""
                                 "data": base64.b64encode(img_byte_arr.getvalue()).decode('utf-8')
                             }
                             
+                            # CRITICAL: Use the correct model for image editing
+                            # gemini-1.5-pro-latest supports image editing better than flash
+                            model_name = "gemini-1.5-pro-latest"
+                            print(f"Using model: {model_name} for image editing")
+                            
                             # First try using the standard client.models.generate_content approach
-                            response = client.models.generate_content(
-                                model="gemini-2.0-flash-exp-image-generation",
-                                contents=[
-                                    {"role": "user", "parts": [
-                                        {"text": processed_prompt},
+                            generation_config = types.GenerateContentConfig(
+                                temperature=0.4,  # Higher temperature for more creative edits
+                                top_k=32,
+                                top_p=0.95,
+                                max_output_tokens=2048,
+                                response_mime_type="image/png"  # Explicitly request image response
+                            )
+                            
+                            safety_settings = [
+                                {
+                                    "category": "HARM_CATEGORY_HARASSMENT",
+                                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                                },
+                                {
+                                    "category": "HARM_CATEGORY_HATE_SPEECH",
+                                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                                },
+                                {
+                                    "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                                },
+                                {
+                                    "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                                }
+                            ]
+                            
+                            # Create an enhanced prompt that explicitly instructs the model to return an image
+                            enhanced_prompt = f"""INSTRUCTIONS: Edit the following image as described below. 
+You MUST return the edited image and a brief text explanation.
+
+EDIT REQUEST: {prompt}
+
+IMAGE EDITING INSTRUCTIONS:
+1. Make the requested changes to the input image
+2. Return both the edited image and a text explanation
+3. Do not place text on the image itself
+4. Return the image in PNG format
+5. Maintain the original resolution
+6. Ensure the edited image is the first element in your response
+
+This is a direct image editing task that requires you to return a modified version of the input image."""
+                            
+                            # Structured content with proper format
+                            contents = [
+                                {
+                                    "role": "user", 
+                                    "parts": [
+                                        {"text": enhanced_prompt},
                                         {"inline_data": image_part}
-                                    ]}
-                                ],
-                                config=types.GenerateContentConfig(
-                                    response_modalities=["TEXT", "IMAGE"],
-                                    temperature=0.2,  # Lower temperature for more deterministic results
-                                    top_k=20,
-                                    top_p=0.8
-                                )
+                                    ]
+                                }
+                            ]
+                            
+                            response = client.models.generate_content(
+                                model=model_name,
+                                contents=contents,
+                                generation_config=generation_config,
+                                safety_settings=safety_settings
                             )
                             print("Used client.models.generate_content successfully")
                         except Exception as api_error:
@@ -962,28 +1012,47 @@ After generating the edited image, briefly explain what changes you made."""
                             
                             # Create a GenerativeModel directly
                             if hasattr(google.generativeai, 'GenerativeModel'):
-                                model = google.generativeai.GenerativeModel("gemini-2.0-flash-exp-image-generation")
-                                
-                                # Create properly formatted contents
-                                contents = [
-                                    {"role": "user", "parts": [
-                                        {"text": processed_prompt},
-                                        {"inline_data": image_part}
-                                    ]}
-                                ]
-                                
-                                generation_config = {
-                                    'temperature': 0.2,
-                                    'top_k': 20,
-                                    'top_p': 0.8,
-                                    'response_mime_type': 'image/png'
-                                }
-                                
-                                response = model.generate_content(
-                                    contents=contents,
-                                    generation_config=generation_config
-                                )
-                                print("Used GenerativeModel successfully via fallback")
+                                try:
+                                    # Use gemini-1.5-pro which is better for image editing
+                                    model = google.generativeai.GenerativeModel(model_name)
+                                    
+                                    # Generation parameters optimized for image editing
+                                    generation_config = {
+                                        'temperature': 0.4,
+                                        'top_k': 32,
+                                        'top_p': 0.95,
+                                        'max_output_tokens': 2048,
+                                        'response_mime_type': 'image/png'
+                                    }
+                                    
+                                    # Create properly formatted contents
+                                    contents = [
+                                        {
+                                            "role": "user", 
+                                            "parts": [
+                                                {"text": enhanced_prompt},
+                                                {"inline_data": image_part}
+                                            ]
+                                        }
+                                    ]
+                                    
+                                    # Try with stream=False to ensure we get the full response
+                                    response = model.generate_content(
+                                        contents=contents,
+                                        generation_config=generation_config,
+                                        stream=False
+                                    )
+                                    print("Used GenerativeModel successfully via fallback")
+                                except Exception as model_error:
+                                    print(f"GenerativeModel direct call failed: {str(model_error)}")
+                                    # Try with the original model as last resort
+                                    model = google.generativeai.GenerativeModel("gemini-2.0-flash-exp-image-generation")
+                                    response = model.generate_content(
+                                        contents=contents,
+                                        generation_config=generation_config,
+                                        stream=False
+                                    )
+                                    print("Used original model as last resort")
                             else:
                                 # Ultimate fallback
                                 raise RuntimeError("No compatible API method available")
