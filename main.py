@@ -954,42 +954,32 @@ After editing, briefly explain what changes you made."""
                             # First try using the standard client.models.generate_content approach
                             # with only compatible parameters
                             try:
+                                # Structure the request in the format specifically designed for the flash-exp-image-generation model
+                                content_parts = [
+                                    {"text": enhanced_prompt},
+                                    {"inline_data": image_part}
+                                ]
+                                
+                                # Use a simpler request format that's more compatible with this model
                                 response = client.models.generate_content(
                                     model=model_name,
-                                    contents=[
-                                        {
-                                            "role": "user", 
-                                            "parts": [
-                                                {"text": enhanced_prompt},
-                                                {"inline_data": image_part}
-                                            ]
-                                        }
-                                    ],
-                                    # Use only compatible parameters for this model
-                                    config=types.GenerateContentConfig(
-                                        response_modalities=["TEXT", "IMAGE"],
-                                        temperature=0.4,
-                                        top_k=32,
-                                        top_p=0.95
-                                    )
-                                )
-                                print("Used client.models.generate_content successfully")
-                            except Exception as config_error:
-                                print(f"Config error in primary call: {str(config_error)}")
-                                # Try simpler configuration if the detailed one fails
-                                response = client.models.generate_content(
-                                    model=model_name,
-                                    contents=[
-                                        {
-                                            "role": "user", 
-                                            "parts": [
-                                                {"text": enhanced_prompt},
-                                                {"inline_data": image_part}
-                                            ]
-                                        }
-                                    ]
+                                    contents=[{"role": "user", "parts": content_parts}]
                                 )
                                 print("Used client.models.generate_content with minimal config successfully")
+                            except Exception as config_error:
+                                print(f"Config error in primary call: {str(config_error)}")
+                                # Final attempt with absolute minimal configuration
+                                try:
+                                    # Create a GenerativeModel directly with no extra parameters
+                                    model = google.generativeai.GenerativeModel(model_name)
+                                    response = model.generate_content([
+                                        {"text": enhanced_prompt},
+                                        {"inline_data": image_part}
+                                    ])
+                                    print("Used GenerativeModel minimal call successfully")
+                                except Exception as e:
+                                    print(f"All API calls failed: {str(e)}")
+                                    raise
                         except Exception as api_error:
                             # If that fails, try our compatibility approach directly
                             print(f"Primary API call failed: {str(api_error)}")
@@ -1076,8 +1066,108 @@ After editing, briefly explain what changes you made."""
                     if hasattr(response, '_raw_response'):
                         print(f"Raw response keys: {list(response._raw_response.keys()) if isinstance(response._raw_response, dict) else 'Not a dictionary'}")
                     
-                    # CRITICAL FIX: Improved image extraction from response
-                    if hasattr(response, 'candidates') and response.candidates:
+                    # First attempt with improved candidate processing
+                    try:
+                        if hasattr(response, 'candidates') and response.candidates:
+                            print(f"Found {len(response.candidates)} candidates")
+                            for candidate_idx, candidate in enumerate(response.candidates):
+                                print(f"Processing candidate {candidate_idx+1}/{len(response.candidates)}")
+                                
+                                # Log the entire structure of this candidate for debugging
+                                if hasattr(candidate, '__dict__'):
+                                    print(f"Candidate attributes: {list(candidate.__dict__.keys())}")
+                                
+                                # Process different candidate attribute patterns
+                                for attr_pattern in ['content', 'parts', 'text', 'image']:
+                                    if hasattr(candidate, attr_pattern):
+                                        print(f"Found attribute: {attr_pattern}")
+                                        
+                                        # Special case for content.parts structure
+                                        if attr_pattern == 'content' and hasattr(candidate.content, 'parts'):
+                                            for part_idx, part in enumerate(candidate.content.parts):
+                                                print(f"Processing part {part_idx+1}/{len(candidate.content.parts)}")
+                                                
+                                                # Direct access to inline_data
+                                                if hasattr(part, 'inline_data') and part.inline_data:
+                                                    print("Found inline_data in part")
+                                                    try:
+                                                        # Try multiple methods to extract the image data
+                                                        inline_data = part.inline_data
+                                                        image_bytes = None
+                                                        
+                                                        # Method 1: Direct data attribute
+                                                        if hasattr(inline_data, 'data') and inline_data.data:
+                                                            print("Extracting from inline_data.data")
+                                                            if isinstance(inline_data.data, str):
+                                                                # Handle data URLs
+                                                                if inline_data.data.startswith('data:'):
+                                                                    image_bytes = base64.b64decode(inline_data.data.split(',', 1)[1])
+                                                                else:
+                                                                    image_bytes = base64.b64decode(inline_data.data)
+                                                            else:
+                                                                image_bytes = inline_data.data
+                                                        
+                                                        # Method 2: If inline_data is directly a base64 string
+                                                        elif isinstance(inline_data, str) and len(inline_data) > 100:
+                                                            print("Inline data appears to be a string")
+                                                            if inline_data.startswith('data:'):
+                                                                image_bytes = base64.b64decode(inline_data.split(',', 1)[1])
+                                                            else:
+                                                                image_bytes = base64.b64decode(inline_data)
+                                                        
+                                                        # Method 3: Check all attributes and search for image data
+                                                        elif hasattr(inline_data, '__dict__'):
+                                                            for attr_name, attr_value in inline_data.__dict__.items():
+                                                                print(f"Checking attribute: {attr_name}")
+                                                                if attr_name.lower().endswith('data') and isinstance(attr_value, (str, bytes)):
+                                                                    print(f"Found potential image data in {attr_name}")
+                                                                    if isinstance(attr_value, str):
+                                                                        if attr_value.startswith('data:'):
+                                                                            image_bytes = base64.b64decode(attr_value.split(',', 1)[1])
+                                                                        else:
+                                                                            try:
+                                                                                image_bytes = base64.b64decode(attr_value)
+                                                                            except:
+                                                                                print(f"Not valid base64 in {attr_name}")
+                                                                    else:
+                                                                        image_bytes = attr_value
+                                                                    
+                                                                    if image_bytes:
+                                                                        break
+                                                        
+                                                        # Process image bytes if found
+                                                        if image_bytes:
+                                                            print(f"Found image bytes: {len(image_bytes)} bytes")
+                                                            try:
+                                                                img_buffer = BytesIO(image_bytes)
+                                                                result_image = Image.open(img_buffer)
+                                                                result_image_b64 = image_to_base64(result_image)
+                                                                print(f"Successfully extracted image: {result_image.format}, {result_image.size}")
+                                                                break
+                                                            except Exception as img_err:
+                                                                print(f"Error opening image: {str(img_err)}")
+                                                        
+                                                    except Exception as inline_err:
+                                                        print(f"Error processing inline_data: {str(inline_err)}")
+                                                
+                                                # Extract text content from parts
+                                                if hasattr(part, 'text') and part.text:
+                                                    print(f"Found text part: {len(part.text)} chars")
+                                                    response_text += part.text
+                                        
+                                        # If we found the image, break out of attribute loop
+                                        if result_image:
+                                            break
+                                
+                                # If we found the image, break out of candidates loop
+                                if result_image:
+                                    break
+                    
+                    except Exception as parse_err:
+                        print(f"Error during primary response parsing: {str(parse_err)}")
+                    
+                    # CRITICAL FIX: Improved image extraction from response (original code continues)
+                    if not result_image and hasattr(response, 'candidates') and response.candidates:
                         for candidate_idx, candidate in enumerate(response.candidates):
                             print(f"Processing candidate {candidate_idx+1}/{len(response.candidates)}")
                             
@@ -1189,23 +1279,50 @@ After editing, briefly explain what changes you made."""
                             
                             if isinstance(raw_data, dict):
                                 # Navigate through the raw response structure
-                                if 'candidates' in raw_data:
-                                    for candidate in raw_data['candidates']:
-                                        if 'content' in candidate and 'parts' in candidate['content']:
-                                            for part in candidate['content']['parts']:
-                                                if 'inline_data' in part and isinstance(part['inline_data'], dict):
-                                                    # Commonly found in Gemini responses
-                                                    if 'data' in part['inline_data'] and 'mime_type' in part['inline_data']:
-                                                        try:
-                                                            print(f"Found image data in raw response: {part['inline_data']['mime_type']}")
-                                                            img_data = base64.b64decode(part['inline_data']['data'])
-                                                            img_buffer = BytesIO(img_data)
-                                                            result_image = Image.open(img_buffer)
-                                                            result_image_b64 = image_to_base64(result_image)
-                                                            print("Successfully extracted image from raw response")
-                                                            break
-                                                        except Exception as raw_img_err:
-                                                            print(f"Error extracting image from raw data: {str(raw_img_err)}")
+                                print(f"Raw response keys: {list(raw_data.keys())}")
+                                
+                                # Try to find any image data in the raw response structure
+                                def find_image_data(obj, path=""):
+                                    """Recursively search for image data in the response"""
+                                    if isinstance(obj, dict):
+                                        for k, v in obj.items():
+                                            # Look for promising keys related to images or data
+                                            image_path = f"{path}.{k}" if path else k
+                                            print(f"Exploring path: {image_path}")
+                                            
+                                            # Check for base64 data
+                                            if k in ['data', 'image', 'imageData', 'inline_data'] and isinstance(v, str) and len(v) > 100:
+                                                print(f"Found potential image data at {image_path}")
+                                                try:
+                                                    # Check if it's valid base64
+                                                    if ',' in v:  # Handle data URLs
+                                                        v = v.split(',', 1)[1]
+                                                    img_data = base64.b64decode(v)
+                                                    img_buffer = BytesIO(img_data)
+                                                    result_image = Image.open(img_buffer)
+                                                    return result_image
+                                                except Exception as decode_err:
+                                                    print(f"Not valid image data: {str(decode_err)}")
+                                            
+                                            # Recursively search nested objects
+                                            found_image = find_image_data(v, image_path)
+                                            if found_image:
+                                                return found_image
+                                    elif isinstance(obj, list):
+                                        for i, item in enumerate(obj):
+                                            image_path = f"{path}[{i}]"
+                                            found_image = find_image_data(item, image_path)
+                                            if found_image:
+                                                return found_image
+                                    return None
+                                
+                                # Try to find image data anywhere in the response
+                                found_image = find_image_data(raw_data)
+                                if found_image:
+                                    result_image = found_image
+                                    result_image_b64 = image_to_base64(result_image)
+                                    print("Successfully extracted image from raw response structure")
+                                
                         except Exception as raw_err:
                             print(f"Error processing raw response: {str(raw_err)}")
                     
