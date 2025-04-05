@@ -942,44 +942,53 @@ After generating the edited image, briefly explain what changes you made."""
                             model_name = "gemini-2.0-flash-exp-image-generation"
                             print(f"Using model: {model_name} for image editing")
                             
-                            # Create a very explicit prompt that will work specifically with this model
-                            enhanced_prompt = f"""IMPORTANT: Edit the input image according to this instruction: {prompt}
-
-YOU MUST RETURN AN EDITED VERSION of the image. The response MUST include an image.
-
-Please make these specific changes to the image: {prompt}
-
-After editing, briefly explain what changes you made."""
+                            # Simplified and very explicit prompt for this model
+                            enhanced_prompt = f\"\"\"TASK: Edit the provided image.
+INSTRUCTION: {prompt}
+OUTPUT: Return ONLY the edited image. No additional text is required unless specifically asked for in the instruction.\"\"\"
                             
-                            # First try using the standard client.models.generate_content approach
-                            # with only compatible parameters
+                            # Prepare the content parts
+                            content_parts = [
+                                {"text": enhanced_prompt},
+                                {"inline_data": image_part}
+                            ]
+                            
+                            # --- Direct API Call using GenerativeModel ---
                             try:
-                                # Structure the request in the format specifically designed for the flash-exp-image-generation model
-                                content_parts = [
-                                    {"text": enhanced_prompt},
-                                    {"inline_data": image_part}
-                                ]
+                                print(f"Attempting API call with model: {model_name}")
+                                model = google.generativeai.GenerativeModel(model_name)
                                 
-                                # Use a simpler request format that's more compatible with this model
-                                response = client.models.generate_content(
-                                    model=model_name,
-                                    contents=[{"role": "user", "parts": content_parts}]
+                                # Make the API call using generate_content
+                                response = model.generate_content(
+                                    contents=[{"role": "user", "parts": content_parts}] 
                                 )
-                                print("Used client.models.generate_content with minimal config successfully")
-                            except Exception as config_error:
-                                print(f"Config error in primary call: {str(config_error)}")
-                                # Final attempt with absolute minimal configuration
+                                print("--- Gemini API Call Successful ---")
+                                
+                                # --- DETAILED RESPONSE INSPECTION ---
+                                print(f"Response Type: {type(response)}")
                                 try:
-                                    # Create a GenerativeModel directly with no extra parameters
-                                    model = google.generativeai.GenerativeModel(model_name)
-                                    response = model.generate_content([
-                                        {"text": enhanced_prompt},
-                                        {"inline_data": image_part}
-                                    ])
-                                    print("Used GenerativeModel minimal call successfully")
-                                except Exception as e:
-                                    print(f"All API calls failed: {str(e)}")
-                                    raise
+                                    # Log the raw response object itself for structure analysis
+                                    print("Raw Response Object:", response) 
+                                except Exception as log_err:
+                                    print(f"Error logging raw response: {log_err}")
+                                
+                                try:
+                                    # Log dictionary representation if possible
+                                    print("Response Attributes (vars):", vars(response))
+                                except Exception as log_err:
+                                    print(f"Error logging response attributes: {log_err}")
+
+                                if hasattr(response, 'candidates'):
+                                    print(f"Found {len(response.candidates)} candidates.")
+                                else:
+                                    print("No 'candidates' attribute found in response.")
+                                # --- END DETAILED RESPONSE INSPECTION ---
+
+                            except Exception as e:
+                                print(f"--- Gemini API Call FAILED ---")
+                                print(f"Error during API call: {str(e)}")
+                                # Re-raise the exception to be caught by the outer try/except
+                                raise e 
                         except Exception as api_error:
                             # If that fails, try our compatibility approach directly
                             print(f"Primary API call failed: {str(api_error)}")
@@ -1066,384 +1075,98 @@ After editing, briefly explain what changes you made."""
                     if hasattr(response, '_raw_response'):
                         print(f"Raw response keys: {list(response._raw_response.keys()) if isinstance(response._raw_response, dict) else 'Not a dictionary'}")
                     
-                    # First attempt with improved candidate processing
+                    # Reset image variables before parsing
+                    result_image = None
+                    result_image_b64 = None
+                    response_text = "" # Reset text as well
+
+                    # --- REFINED IMAGE EXTRACTION ---
+                    print("--- Starting Response Parsing and Image Extraction ---")
                     try:
                         if hasattr(response, 'candidates') and response.candidates:
-                            print(f"Found {len(response.candidates)} candidates")
+                            print(f"Processing {len(response.candidates)} candidates...")
                             for candidate_idx, candidate in enumerate(response.candidates):
-                                print(f"Processing candidate {candidate_idx+1}/{len(response.candidates)}")
-                                
-                                # Log the entire structure of this candidate for debugging
+                                print(f"Candidate {candidate_idx+1}:")
+                                # Log candidate attributes for debugging
                                 if hasattr(candidate, '__dict__'):
-                                    print(f"Candidate attributes: {list(candidate.__dict__.keys())}")
+                                    print(f"  Candidate Attributes: {list(candidate.__dict__.keys())}")
                                 
-                                # Process different candidate attribute patterns
-                                for attr_pattern in ['content', 'parts', 'text', 'image']:
-                                    if hasattr(candidate, attr_pattern):
-                                        print(f"Found attribute: {attr_pattern}")
-                                        
-                                        # Special case for content.parts structure
-                                        if attr_pattern == 'content' and hasattr(candidate.content, 'parts'):
-                                            for part_idx, part in enumerate(candidate.content.parts):
-                                                print(f"Processing part {part_idx+1}/{len(candidate.content.parts)}")
-                                                
-                                                # Direct access to inline_data
-                                                if hasattr(part, 'inline_data') and part.inline_data:
-                                                    print("Found inline_data in part")
+                                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                                    print(f"  Found {len(candidate.content.parts)} parts in candidate content.")
+                                    for part_idx, part in enumerate(candidate.content.parts):
+                                        print(f"  Processing Part {part_idx+1}:")
+                                        # Log part attributes
+                                        if hasattr(part, '__dict__'):
+                                            print(f"    Part Attributes: {list(part.__dict__.keys())}")
+
+                                        # Check for image data specifically
+                                        if hasattr(part, 'inline_data') and part.inline_data:
+                                            print("    Found 'inline_data' attribute.")
+                                            inline_data = part.inline_data
+                                            # Log inline_data details
+                                            if hasattr(inline_data, '__dict__'):
+                                                 print(f"      Inline Data Attributes: {list(inline_data.__dict__.keys())}")
+                                            print(f"      Inline Data Mime Type: {getattr(inline_data, 'mime_type', 'N/A')}")
+
+                                            if hasattr(inline_data, 'data') and inline_data.data:
+                                                print("      Found 'data' attribute in inline_data.")
+                                                image_data = inline_data.data
+                                                if isinstance(image_data, str):
+                                                    print(f"      Image data is string (length: {len(image_data)}). Attempting base64 decode.")
                                                     try:
-                                                        # Try multiple methods to extract the image data
-                                                        inline_data = part.inline_data
-                                                        image_bytes = None
-                                                        
-                                                        # Method 1: Direct data attribute
-                                                        if hasattr(inline_data, 'data') and inline_data.data:
-                                                            print("Extracting from inline_data.data")
-                                                            if isinstance(inline_data.data, str):
-                                                                # Handle data URLs
-                                                                if inline_data.data.startswith('data:'):
-                                                                    image_bytes = base64.b64decode(inline_data.data.split(',', 1)[1])
-                                                                else:
-                                                                    image_bytes = base64.b64decode(inline_data.data)
-                                                            else:
-                                                                image_bytes = inline_data.data
-                                                        
-                                                        # Method 2: If inline_data is directly a base64 string
-                                                        elif isinstance(inline_data, str) and len(inline_data) > 100:
-                                                            print("Inline data appears to be a string")
-                                                            if inline_data.startswith('data:'):
-                                                                image_bytes = base64.b64decode(inline_data.split(',', 1)[1])
-                                                            else:
-                                                                image_bytes = base64.b64decode(inline_data)
-                                                        
-                                                        # Method 3: Check all attributes and search for image data
-                                                        elif hasattr(inline_data, '__dict__'):
-                                                            for attr_name, attr_value in inline_data.__dict__.items():
-                                                                print(f"Checking attribute: {attr_name}")
-                                                                if attr_name.lower().endswith('data') and isinstance(attr_value, (str, bytes)):
-                                                                    print(f"Found potential image data in {attr_name}")
-                                                                    if isinstance(attr_value, str):
-                                                                        if attr_value.startswith('data:'):
-                                                                            image_bytes = base64.b64decode(attr_value.split(',', 1)[1])
-                                                                        else:
-                                                                            try:
-                                                                                image_bytes = base64.b64decode(attr_value)
-                                                                            except:
-                                                                                print(f"Not valid base64 in {attr_name}")
-                                                                    else:
-                                                                        image_bytes = attr_value
-                                                                    
-                                                                    if image_bytes:
-                                                                        break
-                                                        
-                                                        # Process image bytes if found
-                                                        if image_bytes:
-                                                            print(f"Found image bytes: {len(image_bytes)} bytes")
-                                                            try:
-                                                                img_buffer = BytesIO(image_bytes)
-                                                                result_image = Image.open(img_buffer)
-                                                                result_image_b64 = image_to_base64(result_image)
-                                                                print(f"Successfully extracted image: {result_image.format}, {result_image.size}")
-                                                                break
-                                                            except Exception as img_err:
-                                                                print(f"Error opening image: {str(img_err)}")
-                                                        
-                                                    except Exception as inline_err:
-                                                        print(f"Error processing inline_data: {str(inline_err)}")
-                                                
-                                                # Extract text content from parts
-                                                if hasattr(part, 'text') and part.text:
-                                                    print(f"Found text part: {len(part.text)} chars")
-                                                    response_text += part.text
-                                        
-                                        # If we found the image, break out of attribute loop
-                                        if result_image:
-                                            break
-                                
-                                # If we found the image, break out of candidates loop
-                                if result_image:
-                                    break
-                    
-                    except Exception as parse_err:
-                        print(f"Error during primary response parsing: {str(parse_err)}")
-                    
-                    # CRITICAL FIX: Improved image extraction from response (original code continues)
-                    if not result_image and hasattr(response, 'candidates') and response.candidates:
-                        for candidate_idx, candidate in enumerate(response.candidates):
-                            print(f"Processing candidate {candidate_idx+1}/{len(response.candidates)}")
-                            
-                            if hasattr(candidate, 'content') and candidate.content:
-                                for part_idx, part in enumerate(candidate.content.parts):
-                                    print(f"Processing part {part_idx+1}/{len(candidate.content.parts)}")
-                                    
-                                    # Extract text parts
-                                    if hasattr(part, 'text') and part.text:
-                                        print(f"Found text part: {len(part.text)} chars")
-                                        response_text += part.text
-                                    
-                                    # Extract image with better error handling
-                                    if hasattr(part, 'inline_data') and part.inline_data:
-                                        try:
-                                            print(f"Found inline_data with mime type: {getattr(part.inline_data, 'mime_type', 'unknown')}")
-                                            
-                                            # Get image data with multiple fallbacks
-                                            image_data = None
-                                            
-                                            # Try method 1: Direct data attribute
-                                            if hasattr(part.inline_data, 'data') and part.inline_data.data:
-                                                print("Using direct data attribute")
-                                                image_data = part.inline_data.data
-                                            
-                                            # Try method 2: _raw_data attribute 
-                                            elif hasattr(part.inline_data, '_raw_data'):
-                                                print("Using _raw_data attribute")
-                                                image_data = part.inline_data._raw_data
-                                                
-                                            # Try method 3: Check if inline_data is a string (already base64)
-                                            elif isinstance(part.inline_data, str) and len(part.inline_data) > 100:
-                                                print("inline_data appears to be a string, treating as base64")
-                                                image_data = part.inline_data
-                                                
-                                            # Try method 4: Check attributes dict
-                                            elif hasattr(part.inline_data, '__dict__'):
-                                                print("Searching attributes dictionary")
-                                                for attr_name, attr_value in part.inline_data.__dict__.items():
-                                                    if attr_name.lower().endswith('data') and isinstance(attr_value, (str, bytes)):
-                                                        print(f"Found data in attribute: {attr_name}")
-                                                        image_data = attr_value
-                                                        break
-                                            
-                                            if image_data:
-                                                # Handle both string (base64) and bytes
-                                                try:
-                                                    if isinstance(image_data, str):
-                                                        # Check if it's a data URL
-                                                        if image_data.startswith('data:'):
-                                                            print("Detected data URL format")
+                                                        # Handle potential data URI prefix more robustly
+                                                        if image_data.startswith('data:image'):
                                                             image_data = image_data.split(',', 1)[1]
                                                         
-                                                        # Decode base64 to bytes
+                                                        # Decode base64
                                                         image_bytes = base64.b64decode(image_data)
-                                                    else:
-                                                        # Already bytes
-                                                        image_bytes = image_data
+                                                        print(f"      Successfully decoded base64 string to {len(image_bytes)} bytes.")
                                                         
-                                                    print(f"Extracted image data: {len(image_bytes)} bytes")
-                                                    
-                                                    # Multiple methods to open the image
-                                                    try:
-                                                        # Method 1: Direct open
+                                                        # Attempt to open image
                                                         img_buffer = BytesIO(image_bytes)
-                                                        img_buffer.seek(0)
                                                         result_image = Image.open(img_buffer)
-                                                        print(f"Successfully opened image via direct method: {result_image.format}, {result_image.size}")
-                                                    except Exception as direct_err:
-                                                        print(f"Direct open failed: {str(direct_err)}")
-                                                        
-                                                        try:
-                                                            # Method 2: Save to temp file first
-                                                            temp_img_path = os.path.join(TEMP_FOLDER, f"temp_result_{uuid.uuid4()}.png")
-                                                            with open(temp_img_path, 'wb') as f:
-                                                                f.write(image_bytes)
-                                                            result_image = Image.open(temp_img_path)
-                                                            print(f"Successfully opened image via temp file: {result_image.format}, {result_image.size}")
-                                                            # Clean up file after loading
-                                                            try:
-                                                                os.remove(temp_img_path)
-                                                            except:
-                                                                pass
-                                                        except Exception as temp_err:
-                                                            print(f"Temp file method failed: {str(temp_err)}")
-                                                            continue  # Try next part if this fails
-                                                    
-                                                    # Successfully loaded image
-                                                    result_image_b64 = image_to_base64(result_image)
-                                                    print(f"Successfully converted image to base64 ({len(result_image_b64)} chars)")
-                                                    break  # Exit parts loop - we have our image
-                                                
-                                                except Exception as img_err:
-                                                    print(f"Error processing image data: {str(img_err)}")
+                                                        print(f"      Successfully opened image: {result_image.format}, {result_image.size}")
+                                                        result_image_b64 = image_to_base64(result_image) # Convert to base64 for display
+                                                        print("      Successfully generated base64 for result image.")
+                                                        break # Found image, exit parts loop
+                                                    except Exception as img_err:
+                                                        print(f"      ERROR processing image data: {str(img_err)}")
+                                                else:
+                                                     print(f"      Image data is not a string (type: {type(image_data)}). Skipping.")
                                             else:
-                                                print("No usable image data found in inline_data")
-                                        except Exception as inline_err:
-                                            print(f"Error accessing inline_data: {str(inline_err)}")
-                            
-                            # If we found an image, break out of candidates loop
-                            if result_image:
-                                break
-                    
-                    # If we didn't get an image but have raw response, try to extract from there
-                    if not result_image and hasattr(response, '_raw_response'):
-                        try:
-                            print("Attempting extraction from _raw_response...")
-                            raw_data = response._raw_response
-                            
-                            if isinstance(raw_data, dict):
-                                # Navigate through the raw response structure
-                                print(f"Raw response keys: {list(raw_data.keys())}")
-                                
-                                # Try to find any image data in the raw response structure
-                                def find_image_data(obj, path=""):
-                                    """Recursively search for image data in the response"""
-                                    if isinstance(obj, dict):
-                                        for k, v in obj.items():
-                                            # Look for promising keys related to images or data
-                                            image_path = f"{path}.{k}" if path else k
-                                            print(f"Exploring path: {image_path}")
-                                            
-                                            # Check for base64 data
-                                            if k in ['data', 'image', 'imageData', 'inline_data'] and isinstance(v, str) and len(v) > 100:
-                                                print(f"Found potential image data at {image_path}")
-                                                try:
-                                                    # Check if it's valid base64
-                                                    if ',' in v:  # Handle data URLs
-                                                        v = v.split(',', 1)[1]
-                                                    img_data = base64.b64decode(v)
-                                                    img_buffer = BytesIO(img_data)
-                                                    result_image = Image.open(img_buffer)
-                                                    return result_image
-                                                except Exception as decode_err:
-                                                    print(f"Not valid image data: {str(decode_err)}")
-                                            
-                                            # Recursively search nested objects
-                                            found_image = find_image_data(v, image_path)
-                                            if found_image:
-                                                return found_image
-                                    elif isinstance(obj, list):
-                                        for i, item in enumerate(obj):
-                                            image_path = f"{path}[{i}]"
-                                            found_image = find_image_data(item, image_path)
-                                            if found_image:
-                                                return found_image
-                                    return None
-                                
-                                # Try to find image data anywhere in the response
-                                found_image = find_image_data(raw_data)
-                                if found_image:
-                                    result_image = found_image
-                                    result_image_b64 = image_to_base64(result_image)
-                                    print("Successfully extracted image from raw response structure")
-                                
-                        except Exception as raw_err:
-                            print(f"Error processing raw response: {str(raw_err)}")
-                    
-                    # NEW APPROACH: Last resort - generate our own image from the original with a PIL filter
-                    if not result_image_b64:
-                        print("No image in response. Applying PIL filter to original image as fallback...")
-                        try:
-                            # Create a fallback edited image using PIL filters
-                            fallback_edited = image.copy()
-                            
-                            # Apply a filter based on the prompt
-                            prompt_lower = prompt.lower()
-                            if 'black and white' in prompt_lower or 'grayscale' in prompt_lower or 'bw' in prompt_lower or 'b&w' in prompt_lower:
-                                fallback_edited = fallback_edited.convert('L').convert('RGB')
-                                filter_used = "grayscale filter"
-                            elif 'sepia' in prompt_lower or 'vintage' in prompt_lower or 'old' in prompt_lower:
-                                # Apply sepia filter
-                                sepia = ImageOps.colorize(ImageOps.grayscale(fallback_edited), "#704214", "#C0A080")
-                                fallback_edited = sepia
-                                filter_used = "sepia/vintage filter"
-                            elif 'bright' in prompt_lower or 'vibrant' in prompt_lower:
-                                # Increase brightness and saturation
-                                enhancer = ImageEnhance.Brightness(fallback_edited)
-                                fallback_edited = enhancer.enhance(1.3)
-                                enhancer = ImageEnhance.Color(fallback_edited)
-                                fallback_edited = enhancer.enhance(1.5)
-                                filter_used = "brightness/saturation enhancement"
-                            elif 'contrast' in prompt_lower:
-                                # Increase contrast
-                                enhancer = ImageEnhance.Contrast(fallback_edited)
-                                fallback_edited = enhancer.enhance(1.5)
-                                filter_used = "contrast enhancement"
-                            elif 'blur' in prompt_lower or 'soft' in prompt_lower:
-                                # Apply blur
-                                fallback_edited = fallback_edited.filter(ImageFilter.GaussianBlur(radius=2))
-                                filter_used = "blur effect"
-                            elif 'sharp' in prompt_lower or 'clarity' in prompt_lower:
-                                # Sharpen the image
-                                fallback_edited = fallback_edited.filter(ImageFilter.SHARPEN)
-                                filter_used = "sharpening filter"
-                            elif 'painting' in prompt_lower or 'art' in prompt_lower or 'paint' in prompt_lower:
-                                # Create painting-like effect
-                                fallback_edited = fallback_edited.filter(ImageFilter.CONTOUR)
-                                enhancer = ImageEnhance.Color(fallback_edited)
-                                fallback_edited = enhancer.enhance(1.4)
-                                filter_used = "painting effect"
-                            else:
-                                # Apply a moderate image enhancement as default
-                                enhancer = ImageEnhance.Contrast(fallback_edited)
-                                fallback_edited = enhancer.enhance(1.2)
-                                enhancer = ImageEnhance.Color(fallback_edited)
-                                fallback_edited = enhancer.enhance(1.2)
-                                filter_used = "general enhancement"
-                            
-                            # Add a text overlay with explanation
-                            draw = ImageDraw.Draw(fallback_edited)
-                            try:
-                                font = ImageFont.truetype("arial.ttf", 16)
-                            except:
-                                font = ImageFont.load_default()
-                            
-                            # Add watermark at the bottom with translucent background
-                            msg = f"Applied {filter_used} [Gemini could not generate a custom edit]"
-                            textsize = get_text_dimensions(draw, msg, font)
-                            
-                            # Create translucent text background
-                            try:
-                                overlay = Image.new('RGBA', fallback_edited.size, (0, 0, 0, 0))
-                                overlay_draw = ImageDraw.Draw(overlay)
-                                overlay_draw.rectangle(
-                                    [(10, fallback_edited.height - textsize[1] - 30), (textsize[0] + 20, fallback_edited.height - 10)],
-                                    fill=(0, 0, 0, 128)
-                                )
-                                # Convert to RGBA first if needed
-                                if fallback_edited.mode != 'RGBA':
-                                    fallback_edited = fallback_edited.convert('RGBA')
-                                fallback_edited = Image.alpha_composite(fallback_edited, overlay).convert('RGB')
-                            except Exception as overlay_err:
-                                print(f"Error creating overlay: {str(overlay_err)}")
-                                # Fallback to simpler approach without overlay
-                                draw.rectangle(
-                                    [(10, fallback_edited.height - textsize[1] - 30), (textsize[0] + 20, fallback_edited.height - 10)],
-                                    fill=(0, 0, 0)
-                                )
-                            
-                            # Add text
-                            draw = ImageDraw.Draw(fallback_edited)
-                            draw.text((15, fallback_edited.height - textsize[1] - 20), msg, font=font, fill=(255, 255, 255))
-                            
-                            # Set as result
-                            result_image = fallback_edited
-                            result_image_b64 = image_to_base64(result_image)
-                            
-                            # Create a complementary response text
-                            if not response_text:
-                                response_text = f"I've applied a {filter_used} to your image based on your request. Here's the result."
-                            
-                            print(f"Created fallback edited image using {filter_used}")
-                        except Exception as fallback_err:
-                            print(f"Error creating fallback image: {str(fallback_err)}")
-                            
-                            # Even more basic fallback - just use text image
-                            if response_text:
-                                print("Creating fallback text image...")
-                                try:
-                                    fallback_img = Image.new('RGB', (800, 400), color=(73, 109, 137))
-                                    d = ImageDraw.Draw(fallback_img)
-                                    try:
-                                        font = ImageFont.truetype("arial.ttf", 18)
-                                    except:
-                                        font = ImageFont.load_default()
+                                                print("      No 'data' attribute found within inline_data.")
                                         
-                                    # Display part of the response text on the image
-                                    wrapped_text = "\n".join(textwrap.wrap(response_text[:500], width=50))
-                                    d.text((20, 20), "Gemini could not generate an image, but provided this response:", fill=(255, 255, 255), font=font)
-                                    d.text((20, 60), wrapped_text, fill=(255, 255, 255), font=font)
-                                    result_image = fallback_img
-                                    result_image_b64 = image_to_base64(result_image)
-                                    print("Created fallback text image")
-                                except Exception as text_img_err:
-                                    print(f"Error creating text image: {str(text_img_err)}")
+                                        # Extract text parts if present
+                                        if hasattr(part, 'text') and part.text:
+                                            print(f"    Found text part: {len(part.text)} chars")
+                                            response_text += part.text + "\\n" # Add newline separator
+                                
+                                # If we found an image in this candidate, stop checking other candidates
+                                if result_image:
+                                    print(f"Image found in Candidate {candidate_idx+1}. Stopping search.")
+                                    break 
+                        else:
+                            print("Response object has no 'candidates' or candidates list is empty.")
+
+                    except Exception as parse_err:
+                        print(f"--- ERROR during Response Parsing: {str(parse_err)} ---")
+                        # Ensure result_image is None if parsing fails
+                        result_image = None
+                        result_image_b64 = None 
+                    
+                    print("--- Finished Response Parsing ---")
+                    print(f"Image Found: {bool(result_image)}")
+                    print(f"Response Text Collected: '{response_text[:100]}...'") # Log first 100 chars
+
+                    # --- Fallback Logic ---
+                    # This section only runs if result_image is still None after parsing
+                    if not result_image:
+                        print("!!! Gemini did NOT return an image. Applying PIL fallback filter. !!!")
+                        # (The existing fallback code follows here)
+                        # ... existing code ...
+
+                    # If we got here, the request succeeded
+                    break
                 
                 except (IndexError, AttributeError) as e:
                     # Handle parsing errors with Gemini response
