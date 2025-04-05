@@ -529,7 +529,7 @@ def store_image_supabase(image, image_type="original"):
             
             # Generate unique file name
             image_id = str(uuid.uuid4())
-            file_name = f"{image_id}.png"
+            file_name = f"{image_type}/{image_id}.png"
             
             # Upload to Supabase
             bucket_name = "images"
@@ -961,10 +961,41 @@ OUTPUT: Return ONLY the edited image based on the instruction."""
                                 print(f"Attempting API call with model: {model_name} using ultra-simplified prompt.")
                                 model = google.generativeai.GenerativeModel(model_name)
                                 
-                                # Make the API call using generate_content
-                                response = model.generate_content(
-                                    contents=[{"role": "user", "parts": content_parts}] 
-                                )
+                                # Create a minimal GenerationConfig
+                                # Using the potentially patched types module
+                                config = None # Initialize config to None
+                                try:
+                                    # Explicitly try to import and use the potentially patched types
+                                    from google.generativeai import types
+                                    # Minimal config, perhaps temperature helps guide generation?
+                                    config = types.GenerateContentConfig(
+                                        temperature=0.5 # Let's try adding a simple config parameter
+                                        # Avoid parameters that previously caused errors like response_modalities or max_output_tokens
+                                    )
+                                    print("Created GenerationConfig object:", config)
+                                    if hasattr(config, '__dict__'):
+                                        print("GenerationConfig attributes:", vars(config))
+                                    else:
+                                        print("GenerationConfig object has no __dict__")
+                                except ImportError:
+                                     print("google.generativeai.types not found, cannot create GenerationConfig.")
+                                except Exception as config_err:
+                                    print(f"Could not create GenerationConfig: {config_err}. Proceeding without config.")
+                                    config = None # Ensure config is None if creation failed
+                                
+                                # Make the API call using generate_content, adding the config if created
+                                print("Making API call with contents:", content_parts)
+                                if config:
+                                    print("Using GenerationConfig for the API call.")
+                                    response = model.generate_content(
+                                        contents=[{"role": "user", "parts": content_parts}],
+                                        generation_config=config
+                                    )
+                                else:
+                                    print("Making API call without GenerationConfig.")
+                                    response = model.generate_content(
+                                        contents=[{"role": "user", "parts": content_parts}]
+                                    )
                                 print("--- Gemini API Call Successful ---")
                                 
                                 # --- DETAILED RESPONSE INSPECTION ---
