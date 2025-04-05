@@ -6,6 +6,51 @@ print("MAIN.PY: Emergency Gemini API compatibility check running...")
 try:
     import google.generativeai
     
+    # Check for types module and GenerateContentConfig
+    try:
+        from google.generativeai import types
+        if not hasattr(types, 'GenerateContentConfig'):
+            print("MAIN.PY CRITICAL: Adding GenerateContentConfig class")
+            
+            # Create a minimal GenerateContentConfig class
+            class GenerateContentConfig:
+                def __init__(self, response_modalities=None, temperature=None, top_k=None, top_p=None, **kwargs):
+                    self.response_modalities = response_modalities
+                    self.temperature = temperature
+                    self.top_k = top_k
+                    self.top_p = top_p
+                    # Store any additional kwargs
+                    for key, value in kwargs.items():
+                        setattr(self, key, value)
+            
+            # Add class to types module
+            types.GenerateContentConfig = GenerateContentConfig
+            print("MAIN.PY: Successfully added GenerateContentConfig class")
+    except ImportError:
+        print("MAIN.PY WARNING: google.generativeai.types module not found, creating...")
+        # Create and inject the types module
+        types_module = type('types', (), {})
+        
+        # Create the GenerateContentConfig class
+        class GenerateContentConfig:
+            def __init__(self, response_modalities=None, temperature=None, top_k=None, top_p=None, **kwargs):
+                self.response_modalities = response_modalities
+                self.temperature = temperature
+                self.top_k = top_k
+                self.top_p = top_p
+                # Store any additional kwargs
+                for key, value in kwargs.items():
+                    setattr(self, key, value)
+        
+        # Add class to module
+        types_module.GenerateContentConfig = GenerateContentConfig
+        
+        # Inject the types module into google.generativeai
+        google.generativeai.types = types_module
+        # Also make it importable
+        sys.modules['google.generativeai.types'] = types_module
+        print("MAIN.PY: Created google.generativeai.types module with GenerateContentConfig")
+    
     # Direct high-priority patch for generate_content
     if not hasattr(google.generativeai, 'generate_content'):
         print("MAIN.PY CRITICAL: generate_content missing - applying emergency patch!")
@@ -23,11 +68,22 @@ try:
                         contents = kwargs.get('contents', [])
                         config = kwargs.get('config', None)
                         
+                        # Convert config object to kwargs if needed
+                        generation_config = {}
+                        if config:
+                            # Extract attributes from the config object
+                            if hasattr(config, 'temperature') and config.temperature is not None:
+                                generation_config['temperature'] = config.temperature
+                            if hasattr(config, 'top_k') and config.top_k is not None:
+                                generation_config['top_k'] = config.top_k
+                            if hasattr(config, 'top_p') and config.top_p is not None:
+                                generation_config['top_p'] = config.top_p
+                        
                         # Use the newer API with GenerativeModel
                         model = google.generativeai.GenerativeModel(model_name)
                         return model.generate_content(
                             contents=contents,
-                            generation_config=config
+                            generation_config=generation_config
                         )
                     
                     # Handle the older direct generate_content(prompt, image) pattern

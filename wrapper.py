@@ -24,7 +24,52 @@ def setup_google_genai_compatibility():
         # First try to directly import the module
         import google.generativeai
         
-        # Monkey patch: directly add generate_content if it doesn't exist
+        # PATCH 1: Add GenerateContentConfig class if it doesn't exist
+        try:
+            # Check if the types module exists and has GenerateContentConfig
+            from google.generativeai import types
+            if not hasattr(types, 'GenerateContentConfig'):
+                print("CRITICAL FIX: GenerateContentConfig class missing, adding compatibility")
+                
+                # Create a GenerateContentConfig class for compatibility
+                class GenerateContentConfig:
+                    def __init__(self, response_modalities=None, temperature=None, top_k=None, top_p=None, **kwargs):
+                        self.response_modalities = response_modalities
+                        self.temperature = temperature
+                        self.top_k = top_k
+                        self.top_p = top_p
+                        # Store any additional kwargs
+                        for key, value in kwargs.items():
+                            setattr(self, key, value)
+                
+                # Add class to types module
+                types.GenerateContentConfig = GenerateContentConfig
+                print("PATCHED: Added GenerateContentConfig class to google.generativeai.types")
+        except ImportError:
+            print("WARNING: google.generativeai.types module not found")
+            # Create and inject the types module
+            types_module = type('types', (), {})
+            
+            # Create and add GenerateContentConfig class
+            class GenerateContentConfig:
+                def __init__(self, response_modalities=None, temperature=None, top_k=None, top_p=None, **kwargs):
+                    self.response_modalities = response_modalities
+                    self.temperature = temperature
+                    self.top_k = top_k
+                    self.top_p = top_p
+                    # Store any additional kwargs
+                    for key, value in kwargs.items():
+                        setattr(self, key, value)
+            
+            # Add the class to our types module
+            types_module.GenerateContentConfig = GenerateContentConfig
+            
+            # Inject the types module into google.generativeai
+            google.generativeai.types = types_module
+            sys.modules['google.generativeai.types'] = types_module
+            print("CREATED: Added missing types module with GenerateContentConfig to google.generativeai")
+        
+        # PATCH 2: Add generate_content if it doesn't exist
         if not hasattr(google.generativeai, 'generate_content'):
             print("CRITICAL FIX: generate_content method missing, adding direct compatibility")
             
@@ -46,9 +91,21 @@ def setup_google_genai_compatibility():
                             print(f"Using GenerativeModel API with model: {model_name}")
                             # For newer API style (0.4.0+)
                             model = google.generativeai.GenerativeModel(model_name)
+                            
+                            # Convert config object to kwargs if needed
+                            generation_config = {}
+                            if config:
+                                # Extract attributes from the config object
+                                if hasattr(config, 'temperature') and config.temperature is not None:
+                                    generation_config['temperature'] = config.temperature
+                                if hasattr(config, 'top_k') and config.top_k is not None:
+                                    generation_config['top_k'] = config.top_k
+                                if hasattr(config, 'top_p') and config.top_p is not None:
+                                    generation_config['top_p'] = config.top_p
+                                    
                             result = model.generate_content(
                                 contents=contents,
-                                generation_config=config
+                                generation_config=generation_config
                             )
                             print(f"Successfully generated content with new API")
                             return result
@@ -108,7 +165,7 @@ def setup_google_genai_compatibility():
             google.generativeai.generate_content = generate_content_impl
             print("PATCHED google.generativeai.generate_content with emergency compatibility layer")
         
-        # Also patch Client if needed
+        # PATCH 3: Also patch Client if needed
         if not hasattr(google.generativeai, 'Client'):
             print("PATCHING: Adding Client compatibility to google.generativeai")
             
