@@ -5,7 +5,4 @@ dockerfilePath = "Dockerfile"
 [deploy]
 numReplicas = 1
 healthcheckPath = "/"
-restartPolicyType = "ON_FAILURE"
-
-[phases.setup]
-cmds = ["python -m venv .venv", "source .venv/bin/activate"] 
+restartPolicyType = "ON_FAILURE" 

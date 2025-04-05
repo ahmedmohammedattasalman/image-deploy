@@ -27,7 +27,15 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     # For image processing and API
     pip install --no-cache-dir "Pillow<11.0.0" && \
     pip install --no-cache-dir google-generativeai==0.5.0 && \
-    pip install --no-cache-dir python-supabase==1.0.3 && \
+    # Manual installation of Supabase dependencies
+    pip install --no-cache-dir postgrest-py && \
+    pip install --no-cache-dir gotrue && \
+    pip install --no-cache-dir realtime-py && \
+    pip install --no-cache-dir storage3 && \
+    pip install --no-cache-dir supafunc && \
+    # Now install supabase without version specification
+    pip install --no-cache-dir supabase && \
+    # Other requirements
     pip install --no-cache-dir requests>=2.30.0 && \
     # For utility functions
     pip install --no-cache-dir python-dotenv>=1.0.0 && \

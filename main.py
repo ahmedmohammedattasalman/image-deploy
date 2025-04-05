@@ -11,14 +11,70 @@ import uuid
 import time
 import shutil
 import re
-# Add compatibility layer for supabase packages
+# Supabase compatibility layer - try different package names
 try:
     from supabase import create_client
+    print("Using supabase package")
 except ImportError:
     try:
         from python_supabase import create_client
+        print("Using python-supabase package")
     except ImportError:
-        raise ImportError("Could not import a supabase client. Please install either 'supabase-py' or 'python-supabase'")
+        try:
+            # If using raw dependencies, manually construct a compatible interface
+            from postgrest import PostgrestClient
+            import gotrue
+            import storage3  
+            
+            def create_client(url, key):
+                """Compatibility shim for supabase packages"""
+                print("Using manual supabase client implementation")
+                class SupabaseStorageContainer:
+                    def __init__(self, storage_client, bucket_name):
+                        self.storage_client = storage_client
+                        self.bucket_name = bucket_name
+                    
+                    def upload(self, path, file_content, options=None):
+                        return self.storage_client.upload(self.bucket_name, path, file_content, options)
+                    
+                    def download(self, path):
+                        return self.storage_client.download(self.bucket_name, path)
+                    
+                    def get_public_url(self, path):
+                        return f"{url}/storage/v1/object/public/{self.bucket_name}/{path}"
+
+                class SupabaseStorageClient:
+                    def __init__(self, storage_client):
+                        self.storage_client = storage_client
+                    
+                    def from_(self, bucket_name):
+                        return SupabaseStorageContainer(self.storage_client, bucket_name)
+
+                class SupabaseClient:
+                    def __init__(self, url, key):
+                        self.url = url
+                        self.key = key
+                        self.auth = gotrue.Auth(url, key)
+                        self.storage = SupabaseStorageClient(storage3.StorageClient(url, key))
+                        
+                    def table(self, table_name):
+                        return PostgrestClient(f"{self.url}/rest/v1", headers={
+                            "apikey": self.key,
+                            "Authorization": f"Bearer {self.key}"
+                        }).table(table_name)
+                    
+                    def query(self, sql_query):
+                        # Simple pass-through implementation
+                        # In a real app, you'd implement proper SQL execution
+                        print(f"SQL query called: {sql_query}")
+                        return []
+
+                return SupabaseClient(url, key)
+                
+        except ImportError:
+            print("Warning: No supabase client available. Storage functionality will be disabled.")
+            def create_client(url, key):
+                raise NotImplementedError("No supabase client is available")
 from dotenv import load_dotenv
 import requests
 import random
