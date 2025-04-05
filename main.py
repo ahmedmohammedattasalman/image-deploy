@@ -1109,7 +1109,7 @@ OUTPUT: Return ONLY the edited image based on the instruction."""
                                                     print(f"      Image data is string (length: {len(image_data)}). Attempting base64 decode.")
                                                     try:
                                                         # Handle potential data URI prefix more robustly
-                                                        if image_data.startswith('data:image'):
+                                                        if image_data.startswith('data:'):
                                                             image_data = image_data.split(',', 1)[1]
                                                         
                                                         # Decode base64
@@ -1125,15 +1125,15 @@ OUTPUT: Return ONLY the edited image based on the instruction."""
                                                         break # Found image, exit parts loop
                                                     except Exception as img_err:
                                                         print(f"      ERROR processing image data: {str(img_err)}")
-                            else:
-                                                     print(f"      Image data is not a string (type: {type(image_data)}). Skipping.")
+                                                else:
+                                                    print(f"      Image data is not a string (type: {type(image_data)}). Skipping.")
                                             else:
                                                 print("      No 'data' attribute found within inline_data.")
                                         
                                         # Extract text parts if present
                                         if hasattr(part, 'text') and part.text:
                                             print(f"    Found text part: {len(part.text)} chars")
-                                            response_text += part.text + "\\n" # Add newline separator
+                                            response_text += part.text + "\n" # Add newline separator
                                 
                                 # If we found an image in this candidate, stop checking other candidates
                                 if result_image:
@@ -1169,23 +1169,39 @@ OUTPUT: Return ONLY the edited image based on the instruction."""
                     try:
                         if hasattr(response, 'text'):
                             response_text = response.text
-                        elif hasattr(response, 'candidates') and len(response.candidates) > 0:
-                            # Navigate the response structure differently
+                        elif hasattr(response, 'candidates') and response.candidates:
+                            # Alternative safer parsing method
                             for candidate in response.candidates:
-                                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
-                                    for part in candidate.content.parts:
-                                        if hasattr(part, 'text') and part.text:
-                                            response_text += part.text
-                                        elif hasattr(part, 'inline_data') and part.inline_data:
-                                            try:
-                                                img_bytes = part.inline_data.data
-                                                img_buffer = BytesIO(img_bytes)
-                                                result_image = Image.open(img_buffer)
-                                            result_image_b64 = image_to_base64(result_image)
-                                            except Exception as inner_img_err:
-                                                print(f"Inner image extraction error: {str(inner_img_err)}")
-                    except Exception as inner_e:
-                        print(f"Alternative response parsing also failed: {str(inner_e)}")
+                                # Extract text
+                                if hasattr(candidate, 'content'):
+                                    content = candidate.content
+                                    if hasattr(content, 'parts'):
+                                        for part in content.parts:
+                                            # Extract text
+                                            if hasattr(part, 'text') and part.text:
+                                                response_text += part.text + "\n"
+                                            
+                                            # Extract image
+                                            if hasattr(part, 'inline_data') and part.inline_data:
+                                                inline_data = part.inline_data
+                                                if hasattr(inline_data, 'data') and inline_data.data:
+                                                    try:
+                                                        img_data = inline_data.data
+                                                        if isinstance(img_data, str):
+                                                            if img_data.startswith('data:'):
+                                                                img_data = img_data.split(',', 1)[1]
+                                                            img_bytes = base64.b64decode(img_data)
+                                                        else:
+                                                            img_bytes = img_data
+                                                            
+                                                        img_buffer = BytesIO(img_bytes)
+                                                        result_image = Image.open(img_buffer)
+                                                        result_image_b64 = image_to_base64(result_image)
+                                                        print("Successfully extracted image in alternative parser")
+                                                    except Exception as img_err:
+                                                        print(f"Alternative image extraction failed: {str(img_err)}")
+                    except Exception as alt_err:
+                        print(f"Alternative parsing method also failed: {str(alt_err)}")
                 
                 # FINAL FALLBACK: If nothing else worked, use our local PIL filter
                 if not result_image_b64:
