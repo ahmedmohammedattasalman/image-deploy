@@ -149,6 +149,7 @@ import logging
 import json
 from werkzeug.exceptions import RequestEntityTooLarge
 from flask_cors import CORS
+from dotenv import load_dotenv
 
 # Setup basic logging
 logging.basicConfig(level=logging.INFO, 
@@ -534,141 +535,77 @@ def store_image_supabase(image, image_type="original"):
     Returns:
         Tuple of (image_id, public_url)
     """
-    # Get a fresh client for this operation
-    supabase_client = get_supabase_client()
-    if not supabase_client:
-        print("Failed to get Supabase client")
-        return None, None
-        
-    max_retries = 3
-    retry_delay = 1  # seconds
+    # Generate a unique ID first
+    image_id = str(uuid.uuid4())
+    file_name = f"{image_type}/{image_id}.png"
     
-    for attempt in range(max_retries):
-        try:
-            # Convert image to bytes
-            buffered = BytesIO()
-            image.save(buffered, format="PNG")
-            img_bytes = buffered.getvalue()
-            
-            # Generate unique file name
-            image_id = str(uuid.uuid4())
-            file_name = f"{image_type}/{image_id}.png"
-            
-            # Upload to Supabase
-            bucket_name = "images"
-            file_path = f"{image_type}/{file_name}"
-            
-            # ADDED SAFETY: Check if storage is actually available
-            if not hasattr(supabase_client, 'storage') or not supabase_client.storage:
-                print("Warning: Supabase storage not available, falling back to local storage")
-                # Fall back to local storage
-                local_path = os.path.join(TEMP_FOLDER, file_name)
-                with open(local_path, 'wb') as f:
-                    f.write(img_bytes)
-                # Return a local "URL" that will work with send_from_directory
-                local_url = f"/temp/{file_name}"
-                return image_id, local_url
-            
-            # Verify from_ method exists
-            if not hasattr(supabase_client.storage, 'from_'):
-                print("Warning: Supabase storage missing 'from_' method, falling back to local storage")
-                # Fall back to local storage
-                local_path = os.path.join(TEMP_FOLDER, file_name)
-                with open(local_path, 'wb') as f:
-                    f.write(img_bytes)
-                # Return a local "URL" that will work with send_from_directory
-                local_url = f"/temp/{file_name}"
-                return image_id, local_url
-            
-            # Extra safety for better error reporting
-            try:
-                # Get the bucket object first
-                bucket = supabase_client.storage.from_(bucket_name)
-                if not bucket:
-                    raise ValueError(f"Could not access bucket '{bucket_name}'")
-                
-                # Verify upload method exists
-                if not hasattr(bucket, 'upload'):
-                    raise ValueError("Bucket object missing 'upload' method")
-            
-            # Upload the file to Supabase Storage with retry mechanism
-                response = bucket.upload(
-                file_path, 
-                img_bytes, 
-                {"content-type": "image/png"}
-            )
-            
-                # Verify get_public_url method exists
-                if not hasattr(bucket, 'get_public_url'):
-                    raise ValueError("Bucket object missing 'get_public_url' method")
-                
-            # Get public URL
-                public_url = bucket.get_public_url(file_path)
-            
-            # Skip database insertion for now as the table might not exist
-            # Instead, just return the successful upload information
-            print(f"Successfully uploaded image to {file_path}")
-            
-            return image_id, public_url
-            except Exception as storage_err:
-                print(f"Supabase storage error: {str(storage_err)}")
-                # Fall back to local storage as a last resort
-                try:
-                    local_path = os.path.join(TEMP_FOLDER, file_name)
-                    with open(local_path, 'wb') as f:
-                        f.write(img_bytes)
-                    # Return a local "URL" that will work with send_from_directory
-                    local_url = f"/temp/{file_name}"
-                    print(f"Saved to local storage instead: {local_path}")
-                    return image_id, local_url
-                except Exception as local_err:
-                    print(f"Even local storage failed: {str(local_err)}")
-                    return None, None
+    # Convert image to bytes
+    buffered = BytesIO()
+    image.save(buffered, format="PNG")
+    img_bytes = buffered.getvalue()
+    
+    # Get a fresh client for this operation
+    supabase_client = None
+    try:
+        if SUPABASE_URL and SUPABASE_KEY:
+            from supabase import create_client
+            supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    except Exception as e:
+        logger.error(f"Failed to create Supabase client: {str(e)}")
+        supabase_client = None
+    
+    # Fall back to local storage if no client
+    if not supabase_client:
+        logger.warning("No Supabase client, using local storage")
+        return save_to_local_storage(image_id, img_bytes, file_name)
         
-        except requests.exceptions.ConnectionError as e:
-            if attempt < max_retries - 1:
-                # Add jitter to prevent thundering herd
-                jitter = random.uniform(0, 0.5)
-                sleep_time = retry_delay * (2 ** attempt) + jitter
-                print(f"Connection error, retrying in {sleep_time:.2f} seconds... ({attempt+1}/{max_retries})")
-                time.sleep(sleep_time)
-                # Try to get a fresh client for the next attempt
-                supabase_client = get_supabase_client()
-            else:
-                print(f"Error storing image in Supabase after {max_retries} attempts: {str(e)}")
-                # Fall back to local storage as a last resort
-                try:
-                    local_path = os.path.join(TEMP_FOLDER, file_name)
-                    with open(local_path, 'wb') as f:
-                        f.write(img_bytes)
-                    # Return a local "URL" that will work with send_from_directory
-                    local_url = f"/temp/{file_name}"
-                    print(f"Saved to local storage instead: {local_path}")
-                    return image_id, local_url
-                except Exception as local_err:
-                    print(f"Even local storage failed: {str(local_err)}")
-                return None, None
+    # Check if storage is available
+    if not hasattr(supabase_client, 'storage') or not supabase_client.storage:
+        logger.warning("Supabase storage not available, using local storage")
+        return save_to_local_storage(image_id, img_bytes, file_name)
+    
+    # Check if from_ method exists
+    if not hasattr(supabase_client.storage, 'from_'):
+        logger.warning("Supabase from_ method not available, using local storage")
+        return save_to_local_storage(image_id, img_bytes, file_name)
+    
+    # Try to upload to Supabase
+    try:
+        bucket_name = "images"
+        # Get bucket
+        bucket = supabase_client.storage.from_(bucket_name)
         
-        except Exception as e:
-            print(f"Error storing image in Supabase: {str(e)}")
-            # For non-connection errors, we'll still retry but with less backoff
-            if attempt < max_retries - 1:
-                time.sleep(retry_delay)
-                # Try to get a fresh client for the next attempt
-                supabase_client = get_supabase_client()
-            else:
-                # Fall back to local storage as a last resort
-                try:
-                    local_path = os.path.join(TEMP_FOLDER, file_name)
-                    with open(local_path, 'wb') as f:
-                        f.write(img_bytes)
-                    # Return a local "URL" that will work with send_from_directory
-                    local_url = f"/temp/{file_name}"
-                    print(f"Saved to local storage instead: {local_path}")
-                    return image_id, local_url
-                except Exception as local_err:
-                    print(f"Even local storage failed: {str(local_err)}")
-                return None, None
+        # Upload file
+        file_path = file_name
+        response = bucket.upload(file_path, img_bytes, {"content-type": "image/png"})
+        
+        # Get public URL
+        public_url = bucket.get_public_url(file_path)
+        logger.info(f"Successfully uploaded image to {file_path}")
+        return image_id, public_url
+    except Exception as e:
+        logger.error(f"Error uploading to Supabase: {str(e)}")
+        return save_to_local_storage(image_id, img_bytes, file_name)
+
+# Helper function to save to local storage
+def save_to_local_storage(image_id, img_bytes, file_name):
+    """Helper function to save an image to local storage"""
+    try:
+        local_path = os.path.join(TEMP_FOLDER, file_name)
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        
+        # Save the file
+        with open(local_path, 'wb') as f:
+            f.write(img_bytes)
+        
+        # Return a local URL path
+        local_url = f"/temp/{file_name}"
+        logger.info(f"Saved to local storage: {local_path}")
+        return image_id, local_url
+    except Exception as e:
+        logger.error(f"Error saving to local storage: {str(e)}")
+        return None, None
 
 # Helper to get image from Supabase
 def get_image_from_supabase(image_id):

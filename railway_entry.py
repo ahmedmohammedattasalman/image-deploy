@@ -117,34 +117,53 @@ try:
     # Now import the Flask app from main
     print("Importing Flask app from main...")
     try:
-        # Try with timeout to prevent hanging
+        # Try with timeout to prevent hanging, but only if SIGALRM is available
         import importlib
-        import signal
+        import platform
+
+        # Check if we're on a platform that supports SIGALRM (not Windows)
+        has_sigalrm = platform.system() != 'Windows'
         
-        def timeout_handler(signum, frame):
-            raise TimeoutError("Importing main took too long")
-        
-        # Set 10 second timeout for import
-        signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(10)
-        
-        try:
-            from main import app as main_app
-            # Successfully imported the main app, replace fallback
-            app = main_app
-            print("Flask app imported successfully from main")
+        if has_sigalrm:
+            import signal
+            def timeout_handler(signum, frame):
+                raise TimeoutError("Importing main took too long")
             
-            # Clear the alarm
-            signal.alarm(0)
-        except TimeoutError as te:
-            print(f"WARNING: Timeout importing main: {str(te)}")
-            print("Using fallback app instead")
-        except Exception as main_import_err:
-            print(f"ERROR importing main: {str(main_import_err)}")
-            traceback.print_exc()
-            print("Using fallback app instead")
+            # Set 20 second timeout for import (increased from 10)
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(20)
+            
+            try:
+                # Import with timeout
+                from main import app as main_app
+                # Successfully imported the main app, replace fallback
+                app = main_app
+                print("Flask app imported successfully from main")
+                
+                # Clear the alarm
+                signal.alarm(0)
+            except TimeoutError as te:
+                print(f"WARNING: Timeout importing main: {str(te)}")
+                print("Using fallback app instead")
+            except Exception as main_import_err:
+                print(f"ERROR importing main: {str(main_import_err)}")
+                traceback.print_exc()
+                print("Using fallback app instead")
+        else:
+            # Direct import without timeout on platforms that don't support SIGALRM
+            try:
+                # Simple import without timeout
+                from main import app as main_app
+                # Successfully imported the main app, replace fallback
+                app = main_app
+                print("Flask app imported successfully from main (without timeout)")
+            except Exception as main_import_err:
+                print(f"ERROR importing main: {str(main_import_err)}")
+                traceback.print_exc()
+                print("Using fallback app instead")
     except Exception as outer_import_err:
         print(f"OUTER ERROR during import: {str(outer_import_err)}")
+        traceback.print_exc()
     
     # Create temp directories if needed
     for dir_name in ['temp_files', 'temp']:
