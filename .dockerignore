@@ -1,5 +1,5 @@
-# Explicitly exclude requirements.txt to prevent installation issues
-requirements.txt
+# Docker build context configuration
+# requirements.txt is needed for installation (DO NOT EXCLUDE)
 
 # Version control
 .git
@@ -49,7 +49,7 @@ temp_files/
 
 # Docker
 .dockerignore
-Dockerfile
+# Dockerfile - include to allow copying Docker context
 
 # pytest
 .pytest_cache/

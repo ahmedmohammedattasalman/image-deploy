@@ -11,13 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy application code WITH requirements.txt
-COPY wrapper.py ./
-COPY main.py ./
-COPY templates ./templates/
-COPY setup_supabase.py ./
-COPY .env.example ./
-COPY requirements.txt ./
+# Copy ALL application files first
+COPY . .
 
 # Make wrapper executable
 RUN chmod +x wrapper.py

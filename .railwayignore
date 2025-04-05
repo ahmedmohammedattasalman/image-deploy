@@ -1,2 +1,7 @@
-# Ignore requirements.txt to prevent package conflicts
-requirements.txt 
+# Railway deployment configuration
+# DO NOT ignore requirements.txt - it's needed for installation
+
+# Add other files to ignore during deployment if needed
+# Example:
+# .env.example
+# *.log 
