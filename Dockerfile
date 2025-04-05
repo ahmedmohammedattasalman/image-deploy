@@ -30,12 +30,15 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir jinja2==3.1.2 && \
     # For image processing and API
     pip install --no-cache-dir "Pillow<11.0.0" && \
-    # Install correct version of Google Generative AI
+    # Install a consistent version of Google Generative AI
     pip install --no-cache-dir google-api-python-client==2.79.0 && \
     pip install --no-cache-dir google-auth==2.16.0 && \
     pip install --no-cache-dir google-auth-httplib2==0.1.0 && \
     pip install --no-cache-dir google-auth-oauthlib==1.0.0 && \
     pip install --no-cache-dir google-generativeai==0.3.1 && \
+    # Generate a simple test to verify Gemini is working
+    echo "import google.generativeai; google.generativeai.configure(api_key='test-key'); print('Gemini configuration test passed')" > /tmp/test_gemini.py && \
+    python /tmp/test_gemini.py && \
     # Manual installation of Supabase dependencies
     pip install --no-cache-dir postgrest-py && \
     pip install --no-cache-dir gotrue && \

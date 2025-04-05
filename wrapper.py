@@ -14,6 +14,26 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
     # First try to directly import the module
     import google.generativeai
+    
+    # Add Client compatibility for older versions
+    if not hasattr(google.generativeai, 'Client'):
+        print("Adding Client compatibility to google.generativeai")
+        
+        # Create a Client class that works with the older API
+        class ClientCompat:
+            def __init__(self, api_key):
+                self.api_key = api_key
+                # Configure the API with the key
+                google.generativeai.configure(api_key=api_key)
+                
+            # Forward the models attribute to the base module
+            @property
+            def models(self):
+                return google.generativeai
+        
+        # Add Client to the google.generativeai module
+        google.generativeai.Client = ClientCompat
+    
     # Make it available as google.genai for compatibility
     sys.modules["google.genai"] = google.generativeai
     # Also try to make it available directly in the google namespace
@@ -28,10 +48,30 @@ except ImportError as e:
         print("Attempting to install required Google packages...")
         subprocess.check_call([
             sys.executable, "-m", "pip", "install", 
-            "google-generativeai>=0.3.0,<0.4.0"
+            "google-generativeai==0.3.1"
         ])
         # Try import again after installation
         import google.generativeai
+        
+        # Add Client compatibility for older versions
+        if not hasattr(google.generativeai, 'Client'):
+            print("Adding Client compatibility to google.generativeai")
+            
+            # Create a Client class that works with the older API
+            class ClientCompat:
+                def __init__(self, api_key):
+                    self.api_key = api_key
+                    # Configure the API with the key
+                    google.generativeai.configure(api_key=api_key)
+                    
+                # Forward the models attribute to the base module
+                @property
+                def models(self):
+                    return google.generativeai
+            
+            # Add Client to the google.generativeai module
+            google.generativeai.Client = ClientCompat
+        
         sys.modules["google.genai"] = google.generativeai
         import google
         google.genai = google.generativeai
