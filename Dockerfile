@@ -22,7 +22,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir flask==2.3.3 && \
     pip install --no-cache-dir google-generativeai==0.5.0 && \
     pip install --no-cache-dir "Pillow<11.0.0" && \
-    pip install --no-cache-dir supabase && \
+    pip install --no-cache-dir python-supabase==0.7.0 && \
     pip install --no-cache-dir python-dotenv>=1.0.0 && \
     pip install --no-cache-dir werkzeug==2.3.7 && \
     pip install --no-cache-dir itsdangerous==2.1.2 && \

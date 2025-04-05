@@ -1,0 +1,2 @@
+# Ignore requirements.txt to prevent package conflicts
+requirements.txt 
