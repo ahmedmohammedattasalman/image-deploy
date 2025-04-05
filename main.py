@@ -145,75 +145,99 @@ import time
 import shutil
 import re
 import textwrap
-# Supabase compatibility layer - try different package names
-try:
-from supabase import create_client
-    print("Using supabase package")
-except ImportError:
-    try:
-        from python_supabase import create_client
-        print("Using python-supabase package")
-    except ImportError:
-        try:
-            # If using raw dependencies, manually construct a compatible interface
-            from postgrest import PostgrestClient
-            import gotrue
-            import storage3  
-            
-            def create_client(url, key):
-                """Compatibility shim for supabase packages"""
-                print("Using manual supabase client implementation")
-                class SupabaseStorageContainer:
-                    def __init__(self, storage_client, bucket_name):
-                        self.storage_client = storage_client
-                        self.bucket_name = bucket_name
-                    
-                    def upload(self, path, file_content, options=None):
-                        return self.storage_client.upload(self.bucket_name, path, file_content, options)
-                    
-                    def download(self, path):
-                        return self.storage_client.download(self.bucket_name, path)
-                    
-                    def get_public_url(self, path):
-                        return f"{url}/storage/v1/object/public/{self.bucket_name}/{path}"
-
-                class SupabaseStorageClient:
-                    def __init__(self, storage_client):
-                        self.storage_client = storage_client
-                    
-                    def from_(self, bucket_name):
-                        return SupabaseStorageContainer(self.storage_client, bucket_name)
-
-                class SupabaseClient:
-                    def __init__(self, url, key):
-                        self.url = url
-                        self.key = key
-                        self.auth = gotrue.Auth(url, key)
-                        self.storage = SupabaseStorageClient(storage3.StorageClient(url, key))
-                        
-                    def table(self, table_name):
-                        return PostgrestClient(f"{self.url}/rest/v1", headers={
-                            "apikey": self.key,
-                            "Authorization": f"Bearer {self.key}"
-                        }).table(table_name)
-                    
-                    def query(self, sql_query):
-                        # Simple pass-through implementation
-                        # In a real app, you'd implement proper SQL execution
-                        print(f"SQL query called: {sql_query}")
-                        return []
-
-                return SupabaseClient(url, key)
-                
-        except ImportError:
-            print("Warning: No supabase client available. Storage functionality will be disabled.")
-            def create_client(url, key):
-                raise NotImplementedError("No supabase client is available")
-from dotenv import load_dotenv
-import requests
-import random
+import logging
 import json
 from werkzeug.exceptions import RequestEntityTooLarge
+from flask_cors import CORS
+
+# Setup basic logging
+logging.basicConfig(level=logging.INFO, 
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Initialize Flask outside any function to avoid circular imports
+app = Flask(__name__)
+CORS(app)
+
+# Global variables to track service status
+GEMINI_API_AVAILABLE = False
+SUPABASE_AVAILABLE = False
+
+# Add a health check endpoint immediately so the app can start
+@app.route('/healthcheck', methods=['GET'])
+def healthcheck():
+    """Health check endpoint for Railway."""
+    # Report service status but always return 200 so container stays up
+    return jsonify({
+        'status': 'ok',
+        'timestamp': time.time(),
+        'gemini_api': GEMINI_API_AVAILABLE,
+        'supabase': SUPABASE_AVAILABLE
+    }), 200
+
+@app.route('/', methods=['GET'])
+def root():
+    """Root endpoint to verify app is running."""
+    return jsonify({
+        'message': 'Image Editing API is running',
+        'services': {
+            'gemini_api': GEMINI_API_AVAILABLE,
+            'supabase': SUPABASE_AVAILABLE
+        },
+        'version': '1.0'
+    })
+
+# Place the rest of the imports and initializations in try/except blocks
+# to prevent startup failures
+
+# Try to initialize Gemini API
+try:
+    API_KEY = os.environ.get('API_KEY')
+    if not API_KEY:
+        logger.warning("No API_KEY found in environment variables. Gemini API will not be available.")
+    else:
+        genai.configure(api_key=API_KEY)
+        
+        # Test if the API works by doing a minimal call
+        try:
+            # This is a minimal test to see if the API is accessible
+            # We don't need an actual response, just to check if we can connect
+            model_list = genai.list_models()
+            if model_list:
+                GEMINI_API_AVAILABLE = True
+                logger.info("Gemini API initialized successfully")
+        except Exception as e:
+            logger.error(f"Error testing Gemini API connection: {str(e)}")
+except Exception as e:
+    logger.error(f"Error setting up Gemini API: {str(e)}")
+
+# Try to set up Supabase
+SUPABASE_URL = os.environ.get('SUPABASE_URL')
+SUPABASE_KEY = os.environ.get('SUPABASE_KEY')
+supabase_client = None
+
+try:
+    if SUPABASE_URL and SUPABASE_KEY:
+        try:
+            # Only try to import if URL and KEY are provided
+            from supabase import create_client
+            supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+            # Test if we can access the client
+            if hasattr(supabase_client, 'storage'):
+                SUPABASE_AVAILABLE = True
+                logger.info("Supabase client initialized successfully")
+        except ImportError:
+            logger.warning("Supabase package not installed. Storage will use local files.")
+        except Exception as e:
+            logger.error(f"Error initializing Supabase client: {str(e)}")
+    else:
+        logger.warning("Supabase credentials not found in environment variables. Using local storage.")
+except Exception as e:
+    logger.error(f"Error setting up Supabase: {str(e)}")
+
+# Set up folder for local storage fallback
+TEMP_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp')
+os.makedirs(TEMP_FOLDER, exist_ok=True)
 
 # Load environment variables
 load_dotenv()
@@ -334,7 +358,6 @@ except Exception as e:
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
 # Initialize Flask app
-app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 150 * 1024 * 1024  # 150MB max upload size
 app.config['SERVER_NAME'] = None  # Prevent issues with request handling
 app.config['UPLOAD_FOLDER'] = TEMP_FOLDER  # Explicit temp folder for uploads
@@ -1609,12 +1632,6 @@ def handle_request_too_large(error):
                           texts=TRANSLATIONS[lang], 
                           lang=lang, 
                           dir="rtl" if lang == "ar" else "ltr"), 413
-
-# Add dedicated healthcheck endpoint for Railway
-@app.route('/healthcheck', methods=['GET'])
-def healthcheck():
-    """Simple health check endpoint for Railway deployment"""
-    return jsonify({"status": "ok", "service": "image-editing"}), 200
 
 if __name__ == '__main__':
     import os
