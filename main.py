@@ -1178,6 +1178,12 @@ def handle_request_too_large(error):
                           lang=lang, 
                           dir="rtl" if lang == "ar" else "ltr"), 413
 
+# Add dedicated healthcheck endpoint for Railway
+@app.route('/healthcheck', methods=['GET'])
+def healthcheck():
+    """Simple health check endpoint for Railway deployment"""
+    return jsonify({"status": "ok", "service": "image-editing"}), 200
+
 if __name__ == '__main__':
     import os
     port = int(os.environ.get('PORT', 8080))
