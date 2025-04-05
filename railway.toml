@@ -1,0 +1,11 @@
+[build]
+builder = "NIXPACKS"
+watchPatterns = ["main.py", "templates/**", "requirements.txt"]
+
+[deploy]
+numReplicas = 1
+healthcheckPath = "/"
+restartPolicyType = "ON_FAILURE"
+
+[phases.setup]
+cmds = ["python -m venv .venv", "source .venv/bin/activate"] 

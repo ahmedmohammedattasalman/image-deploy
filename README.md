@@ -19,6 +19,7 @@ A web application for enhancing and editing images using Google's Gemini AI. Thi
 - **Cloud Storage**: Supabase
 - **Frontend**: HTML, CSS, JavaScript, Bootstrap
 - **Image Processing**: PIL (Python Imaging Library)
+- **Deployment**: Railway
 
 ## Installation
 
@@ -60,6 +61,20 @@ A web application for enhancing and editing images using Google's Gemini AI. Thi
    ```
 
 7. Open your browser and navigate to `http://127.0.0.1:5000/`
+
+## Railway Deployment
+
+To deploy this application on Railway:
+
+1. Create a new Railway project
+2. Connect your GitHub repository
+3. Configure the following environment variables in Railway:
+   - `API_KEY`: Your Google Gemini API key
+   - `SUPABASE_URL`: Your Supabase project URL
+   - `SUPABASE_KEY`: Your Supabase project API key
+
+4. Railway will automatically detect the Dockerfile and deploy your application
+5. Access your deployed application using the provided Railway URL
 
 ## Usage
 

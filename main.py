@@ -106,11 +106,11 @@ def get_text(key, lang="en"):
     return TRANSLATIONS["en"][key]  # Fallback to English
 
 # Configuration
-API_KEY = "AIzaSyBbE0FW-7SEm1FW0NgusR18GmsV10aAVYE"
+API_KEY = os.environ.get("API_KEY", "AIzaSyBbE0FW-7SEm1FW0NgusR18GmsV10aAVYE")
 
 # Supabase Configuration
-SUPABASE_URL = "https://ydmzuujthdrokuosbvyt.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlkbXp1dWp0aGRyb2t1b3Nidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDMzNDA0OTMsImV4cCI6MjA1ODkxNjQ5M30.YYtcgWWV59AcM30JUbq91yYVgGGkU8pk3kNofiZC19I"
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://ydmzuujthdrokuosbvyt.supabase.co")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlkbXp1dWp0aGRyb2t1b3Nidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDMzNDA0OTMsImV4cCI6MjA1ODkxNjQ5M30.YYtcgWWV59AcM30JUbq91yYVgGGkU8pk3kNofiZC19I")
 
 # Initialize Supabase client with a function to allow reconnection
 def get_supabase_client():
@@ -1039,4 +1039,6 @@ def handle_request_too_large(error):
                           dir="rtl" if lang == "ar" else "ltr"), 413
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    import os
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=False)

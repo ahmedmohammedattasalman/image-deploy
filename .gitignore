@@ -1,10 +1,19 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
+
+# Environment variables
+.env
+
+# Virtual Environment
+venv/
+.venv/
 env/
+ENV/
+
+# Distribution / packaging
+.Python
 build/
 develop-eggs/
 dist/
@@ -20,26 +29,42 @@ var/
 .installed.cfg
 *.egg
 
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*,cover
+.hypothesis/
+
+# Temporary files
+temp_files/
+.DS_Store
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# IDE project files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
 # Flask
 instance/
 .webassets-cache
 
-# Virtual Environment
-venv/
-ENV/
-env/
-
 # IDE
-.idea/
-.vscode/
 *.swp
 *.swo
 
 # Temporary files
 temp_dir/
 .cursor/
-temp_files/
-.env
 .flask_session/
 
 # Logs
