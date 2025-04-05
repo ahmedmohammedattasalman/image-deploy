@@ -19,17 +19,54 @@ try:
     if not hasattr(google.generativeai, 'Client'):
         print("Adding Client compatibility to google.generativeai")
         
+        # Create a ModelsClass with generate_content method
+        class ModelsClass:
+            def __init__(self, parent_client):
+                self.parent_client = parent_client
+                
+            def generate_content(self, model, contents, config=None):
+                """Compatibility wrapper for generate_content"""
+                print(f"Using compatibility layer for generate_content with model: {model}")
+                # In older versions, generate_content is directly on the generativeai module
+                prompt_text = contents[0] if isinstance(contents, list) and contents else ""
+                image = contents[1] if isinstance(contents, list) and len(contents) > 1 else None
+                
+                # Get generation config parameters
+                generation_config = {}
+                if config:
+                    if hasattr(config, 'temperature'):
+                        generation_config['temperature'] = config.temperature
+                    if hasattr(config, 'top_k'):
+                        generation_config['top_k'] = config.top_k
+                    if hasattr(config, 'top_p'):
+                        generation_config['top_p'] = config.top_p
+                
+                # Use the direct function from the older version
+                if image:
+                    return google.generativeai.generate_content(
+                        prompt_text, 
+                        image, 
+                        generation_config=generation_config
+                    )
+                else:
+                    return google.generativeai.generate_content(
+                        prompt_text, 
+                        generation_config=generation_config
+                    )
+                
         # Create a Client class that works with the older API
         class ClientCompat:
             def __init__(self, api_key):
                 self.api_key = api_key
                 # Configure the API with the key
                 google.generativeai.configure(api_key=api_key)
+                # Create models property with generate_content
+                self._models = ModelsClass(self)
                 
-            # Forward the models attribute to the base module
+            # Forward the models attribute to our custom class
             @property
             def models(self):
-                return google.generativeai
+                return self._models
         
         # Add Client to the google.generativeai module
         google.generativeai.Client = ClientCompat
@@ -57,17 +94,54 @@ except ImportError as e:
         if not hasattr(google.generativeai, 'Client'):
             print("Adding Client compatibility to google.generativeai")
             
+            # Create a ModelsClass with generate_content method
+            class ModelsClass:
+                def __init__(self, parent_client):
+                    self.parent_client = parent_client
+                    
+                def generate_content(self, model, contents, config=None):
+                    """Compatibility wrapper for generate_content"""
+                    print(f"Using compatibility layer for generate_content with model: {model}")
+                    # In older versions, generate_content is directly on the generativeai module
+                    prompt_text = contents[0] if isinstance(contents, list) and contents else ""
+                    image = contents[1] if isinstance(contents, list) and len(contents) > 1 else None
+                    
+                    # Get generation config parameters
+                    generation_config = {}
+                    if config:
+                        if hasattr(config, 'temperature'):
+                            generation_config['temperature'] = config.temperature
+                        if hasattr(config, 'top_k'):
+                            generation_config['top_k'] = config.top_k
+                        if hasattr(config, 'top_p'):
+                            generation_config['top_p'] = config.top_p
+                    
+                    # Use the direct function from the older version
+                    if image:
+                        return google.generativeai.generate_content(
+                            prompt_text, 
+                            image, 
+                            generation_config=generation_config
+                        )
+                    else:
+                        return google.generativeai.generate_content(
+                            prompt_text, 
+                            generation_config=generation_config
+                        )
+            
             # Create a Client class that works with the older API
             class ClientCompat:
                 def __init__(self, api_key):
                     self.api_key = api_key
                     # Configure the API with the key
                     google.generativeai.configure(api_key=api_key)
+                    # Create models property with generate_content
+                    self._models = ModelsClass(self)
                     
-                # Forward the models attribute to the base module
+                # Forward the models attribute to our custom class
                 @property
                 def models(self):
-                    return google.generativeai
+                    return self._models
             
             # Add Client to the google.generativeai module
             google.generativeai.Client = ClientCompat
