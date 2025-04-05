@@ -138,7 +138,7 @@ from flask import Flask, render_template, request, redirect, url_for, send_file,
 import io
 from google import genai
 from google.genai import types
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance, ImageOps
 from io import BytesIO
 import base64
 import time
@@ -764,6 +764,23 @@ def format_arabic_text(text):
     # Otherwise, return the original text
     return text
 
+# Helper function to get text dimensions consistently across PIL versions
+def get_text_dimensions(draw, text, font):
+    try:
+        # Try newer method first
+        if hasattr(font, 'getbbox'):
+            bbox = font.getbbox(text)
+            return bbox[2] - bbox[0], bbox[3] - bbox[1]
+        # Fall back to older textsize method
+        elif hasattr(draw, 'textsize'):
+            return draw.textsize(text, font=font)
+        else:
+            # Ultimate fallback - estimate based on font size and text length
+            return len(text) * font.size // 2, font.size + 4
+    except Exception:
+        # If all else fails, return a reasonable default
+        return 300, 20
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     # Get current language from session or default to English
@@ -890,7 +907,13 @@ def index():
                     # For debugging
                     print(f"Processing Arabic prompt: {processed_prompt}")
                 else:
-                    processed_prompt = prompt
+                    # Improved general prompt that explicitly asks for an image
+                    processed_prompt = f"""MOST IMPORTANT: Edit the attached image according to this description: {prompt}
+
+YOU MUST RETURN AN EDITED IMAGE based on the input image. Image generation is required, not optional.
+
+After generating the edited image, briefly explain what changes you made."""
+                    print(f"Enhanced prompt: {processed_prompt[:100]}...")
                 
                 for attempt in range(max_retries):
                     try:
@@ -963,6 +986,14 @@ def index():
                 # If we exhausted all retries and still have an error
                 if 'response' not in locals():
                     raise last_error
+                
+                # Print response structure for debugging
+                print("Response received, exploring structure...")
+                print(f"Response type: {type(response)}")
+                if hasattr(response, 'candidates'):
+                    print(f"Has candidates: {len(response.candidates) if hasattr(response.candidates, '__len__') else 'Yes'}")
+                else:
+                    print("No candidates attribute found")
                 
                 # Process the response
                 response_text = ""
@@ -1055,24 +1086,105 @@ def index():
                         except Exception as alt_err:
                             print(f"Alternative extraction failed: {str(alt_err)}")
                         
-                    # If we still don't have an image, and we have text, create a simple text image
-                    if not result_image_b64 and response_text:
-                        print("Creating fallback text image...")
-                        fallback_img = Image.new('RGB', (800, 400), color=(73, 109, 137))
-                        d = ImageDraw.Draw(fallback_img)
+                    # NEW APPROACH: Last resort - generate our own image from the original with a PIL filter
+                    if not result_image_b64:
+                        print("No image in response. Applying PIL filter to original image as fallback...")
                         try:
-                            font = ImageFont.truetype("arial.ttf", 18)
-                        except:
-                            font = ImageFont.load_default()
+                            # Create a fallback edited image using PIL filters
+                            fallback_edited = image.copy()
                             
-                        # Display part of the response text on the image
-                        wrapped_text = "\n".join(textwrap.wrap(response_text[:500], width=50))
-                        d.text((20, 20), "Gemini could not generate an image, but provided this response:", fill=(255, 255, 255), font=font)
-                        d.text((20, 60), wrapped_text, fill=(255, 255, 255), font=font)
-                        result_image = fallback_img
-                        result_image_b64 = image_to_base64(result_image)
-                        print("Created fallback text image")
-                        
+                            # Apply a filter based on the prompt
+                            prompt_lower = prompt.lower()
+                            if 'black and white' in prompt_lower or 'grayscale' in prompt_lower or 'bw' in prompt_lower or 'b&w' in prompt_lower:
+                                fallback_edited = fallback_edited.convert('L').convert('RGB')
+                                filter_used = "grayscale filter"
+                            elif 'sepia' in prompt_lower or 'vintage' in prompt_lower or 'old' in prompt_lower:
+                                # Apply sepia filter
+                                sepia = ImageOps.colorize(ImageOps.grayscale(fallback_edited), "#704214", "#C0A080")
+                                fallback_edited = sepia
+                                filter_used = "sepia/vintage filter"
+                            elif 'bright' in prompt_lower or 'vibrant' in prompt_lower:
+                                # Increase brightness and saturation
+                                enhancer = ImageEnhance.Brightness(fallback_edited)
+                                fallback_edited = enhancer.enhance(1.3)
+                                enhancer = ImageEnhance.Color(fallback_edited)
+                                fallback_edited = enhancer.enhance(1.5)
+                                filter_used = "brightness/saturation enhancement"
+                            elif 'contrast' in prompt_lower:
+                                # Increase contrast
+                                enhancer = ImageEnhance.Contrast(fallback_edited)
+                                fallback_edited = enhancer.enhance(1.5)
+                                filter_used = "contrast enhancement"
+                            elif 'blur' in prompt_lower or 'soft' in prompt_lower:
+                                # Apply blur
+                                fallback_edited = fallback_edited.filter(ImageFilter.GaussianBlur(radius=2))
+                                filter_used = "blur effect"
+                            elif 'sharp' in prompt_lower or 'clarity' in prompt_lower:
+                                # Sharpen the image
+                                fallback_edited = fallback_edited.filter(ImageFilter.SHARPEN)
+                                filter_used = "sharpening filter"
+                            else:
+                                # Apply a moderate image enhancement as default
+                                enhancer = ImageEnhance.Contrast(fallback_edited)
+                                fallback_edited = enhancer.enhance(1.2)
+                                enhancer = ImageEnhance.Color(fallback_edited)
+                                fallback_edited = enhancer.enhance(1.2)
+                                filter_used = "general enhancement"
+                            
+                            # Add a text overlay with explanation
+                            draw = ImageDraw.Draw(fallback_edited)
+                            try:
+                                font = ImageFont.truetype("arial.ttf", 16)
+                            except:
+                                font = ImageFont.load_default()
+                            
+                            # Add watermark at the bottom with translucent background
+                            msg = f"Applied {filter_used} [Gemini could not generate a custom edit]"
+                            textsize = get_text_dimensions(draw, msg, font)
+                            
+                            # Create translucent text background
+                            overlay = Image.new('RGBA', fallback_edited.size, (0, 0, 0, 0))
+                            overlay_draw = ImageDraw.Draw(overlay)
+                            overlay_draw.rectangle(
+                                [(10, fallback_edited.height - textsize[1] - 30), (textsize[0] + 20, fallback_edited.height - 10)],
+                                fill=(0, 0, 0, 128)
+                            )
+                            fallback_edited = Image.alpha_composite(fallback_edited.convert('RGBA'), overlay).convert('RGB')
+                            
+                            # Add text
+                            draw = ImageDraw.Draw(fallback_edited)
+                            draw.text((15, fallback_edited.height - textsize[1] - 20), msg, font=font, fill=(255, 255, 255))
+                            
+                            # Set as result
+                            result_image = fallback_edited
+                            result_image_b64 = image_to_base64(result_image)
+                            
+                            # Create a complementary response text
+                            if not response_text:
+                                response_text = f"I've applied a {filter_used} to your image based on your request. Here's the result."
+                            
+                            print(f"Created fallback edited image using {filter_used}")
+                        except Exception as fallback_err:
+                            print(f"Error creating fallback image: {str(fallback_err)}")
+                            
+                            # Even more basic fallback - just use text image
+                            if response_text:
+                                print("Creating fallback text image...")
+                                fallback_img = Image.new('RGB', (800, 400), color=(73, 109, 137))
+                                d = ImageDraw.Draw(fallback_img)
+                                try:
+                                    font = ImageFont.truetype("arial.ttf", 18)
+                                except:
+                                    font = ImageFont.load_default()
+                                    
+                                # Display part of the response text on the image
+                                wrapped_text = "\n".join(textwrap.wrap(response_text[:500], width=50))
+                                d.text((20, 20), "Gemini could not generate an image, but provided this response:", fill=(255, 255, 255), font=font)
+                                d.text((20, 60), wrapped_text, fill=(255, 255, 255), font=font)
+                                result_image = fallback_img
+                                result_image_b64 = image_to_base64(result_image)
+                                print("Created fallback text image")
+                            
                 except (IndexError, AttributeError) as e:
                     # Handle parsing errors with Gemini response
                     print(f"Error parsing Gemini response: {str(e)}")
@@ -1097,6 +1209,47 @@ def index():
                                                 print(f"Inner image extraction error: {str(inner_img_err)}")
                     except Exception as inner_e:
                         print(f"Alternative response parsing also failed: {str(inner_e)}")
+                
+                # FINAL FALLBACK: If nothing else worked, use our local PIL filter
+                if not result_image_b64:
+                    try:
+                        # Apply a simple enhancement to the original image
+                        print("FINAL FALLBACK: Applying simple enhancement to original image")
+                        enhanced = image.copy()
+                        # Apply modest contrast and sharpness increase
+                        enhancer = ImageEnhance.Contrast(enhanced)
+                        enhanced = enhancer.enhance(1.2)
+                        enhanced = enhanced.filter(ImageFilter.SHARPEN)
+                        
+                        # Add a text overlay explaining the situation
+                        draw = ImageDraw.Draw(enhanced)
+                        try:
+                            font = ImageFont.truetype("arial.ttf", 16)
+                        except:
+                            font = ImageFont.load_default()
+                            
+                        text = "Simple enhancement applied (AI edit unavailable)"
+                        textsize = get_text_dimensions(draw, text, font)
+                        
+                        # Create semi-transparent background for text
+                        overlay = Image.new('RGBA', enhanced.size, (0, 0, 0, 0))
+                        draw_overlay = ImageDraw.Draw(overlay)
+                        draw_overlay.rectangle(
+                            [(10, enhanced.height - textsize[1] - 30), (textsize[0] + 20, enhanced.height - 10)],
+                            fill=(0, 0, 0, 128)
+                        )
+                        enhanced = Image.alpha_composite(enhanced.convert('RGBA'), overlay).convert('RGB')
+                        
+                        result_image = enhanced
+                        result_image_b64 = image_to_base64(result_image)
+                        
+                        # Create default response if none exists
+                        if not response_text:
+                            response_text = "I've applied a basic enhancement to your image. For better results, please try a different edit description."
+                            
+                        print("Created emergency enhanced image")
+                    except Exception as final_err:
+                        print(f"Even final fallback failed: {str(final_err)}")
                 
                 if not result_image_b64:
                     # Special message for Arabic users
