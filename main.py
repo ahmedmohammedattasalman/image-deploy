@@ -1160,7 +1160,6 @@ OUTPUT: Return ONLY the edited image based on the instruction."""
                         # ... existing code ...
 
                     # If we got here, the request succeeded
-                    break
                 
                 except (IndexError, AttributeError) as e:
                     # Handle parsing errors with Gemini response
