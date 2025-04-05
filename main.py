@@ -820,23 +820,52 @@ def index():
                 
                 for attempt in range(max_retries):
                     try:
-                        # Generate content using Gemini with clear safety settings for image editing
-                        response = client.models.generate_content(
-                            model="gemini-2.0-flash-exp-image-generation",
-                            contents=[processed_prompt, image],
-                            config=types.GenerateContentConfig(
-                                response_modalities=["Text", "Image"],
-                                temperature=0.2,  # Lower temperature for more deterministic results
-                                top_k=20,
-                                top_p=0.8
+                        # RAILWAY/DEPLOYMENT FIX: Add detailed error handling and logging
+                        print(f"Attempt {attempt+1}: Processing image with prompt: {processed_prompt[:100]}...")
+                        print(f"Using model: gemini-2.0-flash-exp-image-generation")
+                        
+                        try:
+                            # First try using the standard client.models.generate_content approach
+                            response = client.models.generate_content(
+                                model="gemini-2.0-flash-exp-image-generation",
+                                contents=[processed_prompt, image],
+                                config=types.GenerateContentConfig(
+                                    response_modalities=["Text", "Image"],
+                                    temperature=0.2,  # Lower temperature for more deterministic results
+                                    top_k=20,
+                                    top_p=0.8
+                                )
                             )
-                        )
+                            print("Used client.models.generate_content successfully")
+                        except Exception as api_error:
+                            # If that fails, try our compatibility approach directly
+                            print(f"Primary API call failed: {str(api_error)}")
+                            print("Using fallback direct GenerativeModel call...")
+                            
+                            # Create a GenerativeModel directly
+                            if hasattr(google.generativeai, 'GenerativeModel'):
+                                model = google.generativeai.GenerativeModel("gemini-2.0-flash-exp-image-generation")
+                                contents = [processed_prompt, image]
+                                generation_config = {
+                                    'temperature': 0.2,
+                                    'top_k': 20,
+                                    'top_p': 0.8
+                                }
+                                response = model.generate_content(
+                                    contents=contents,
+                                    generation_config=generation_config
+                                )
+                                print("Used GenerativeModel successfully via fallback")
+                            else:
+                                # Ultimate fallback
+                                raise RuntimeError("No compatible API method available")
                         
                         # If we got here, the request succeeded
                         break
                     except Exception as e:
                         last_error = e
                         error_message = str(e)
+                        print(f"Error during image processing attempt {attempt+1}: {error_message}")
                         
                         # Check if this is an overload error
                         if "503" in error_message and "overloaded" in error_message.lower():
@@ -876,7 +905,7 @@ def index():
                                 response_text += part.text
                             else:
                                 response_text += part.text
-                        elif part.inline_data is not None:
+                        elif hasattr(part, 'inline_data') and part.inline_data is not None:
                             result_image = Image.open(BytesIO(part.inline_data.data))
                             
                             # Compress the result image if needed before converting to base64
@@ -884,6 +913,19 @@ def index():
                                 result_image = compress_image(result_image)
                                 
                             result_image_b64 = image_to_base64(result_image)
+                    
+                    # If we couldn't extract the image using the normal method, try an alternative approach
+                    if not result_image_b64:
+                        print("Trying alternative method to extract image from response...")
+                        # Attempt to extract the image from the response using a more direct method
+                        if hasattr(response, 'candidates') and len(response.candidates) > 0:
+                            candidate = response.candidates[0]
+                            if hasattr(candidate, 'content'):
+                                for part in candidate.content.parts:
+                                    if hasattr(part, 'inline_data') and part.inline_data is not None:
+                                        result_image = Image.open(BytesIO(part.inline_data.data))
+                                        result_image_b64 = image_to_base64(result_image)
+                                        break
                 except (IndexError, AttributeError) as e:
                     # Handle parsing errors with Gemini response
                     print(f"Error parsing Gemini response: {str(e)}")
@@ -909,7 +951,7 @@ def index():
                     if lang == "ar":
                         error_msg = "فشل في إنشاء الصورة المعدلة. يرجى المحاولة مرة أخرى بتعليمات مختلفة."
                     else:
-                        error_msg = "Failed to generate edited image."
+                        error_msg = "Failed to generate edited image. Please try different instructions."
                     return render_template('index.html', error=error_msg, texts=TRANSLATIONS[lang], lang=lang, dir="rtl" if lang == "ar" else "ltr")
                 
                 # Store the edited image in Supabase
