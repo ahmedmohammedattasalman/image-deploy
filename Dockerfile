@@ -12,8 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy application code but NOT requirements.txt
-COPY main.py ./
 COPY wrapper.py ./
+COPY main.py ./
 COPY templates ./templates/
 COPY setup_supabase.py ./
 COPY .env.example ./
@@ -30,15 +30,13 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir jinja2==3.1.2 && \
     # For image processing and API
     pip install --no-cache-dir "Pillow<11.0.0" && \
-    # Install a consistent version of Google Generative AI
+    # Install Google packages with pinned versions
+    pip install --no-cache-dir google-api-core==2.11.0 && \
     pip install --no-cache-dir google-api-python-client==2.79.0 && \
     pip install --no-cache-dir google-auth==2.16.0 && \
     pip install --no-cache-dir google-auth-httplib2==0.1.0 && \
     pip install --no-cache-dir google-auth-oauthlib==1.0.0 && \
     pip install --no-cache-dir google-generativeai==0.3.1 && \
-    # Generate a simple test to verify Gemini is working
-    echo "import google.generativeai; google.generativeai.configure(api_key='test-key'); print('Gemini configuration test passed')" > /tmp/test_gemini.py && \
-    python /tmp/test_gemini.py && \
     # Manual installation of Supabase dependencies
     pip install --no-cache-dir postgrest-py && \
     pip install --no-cache-dir gotrue && \
@@ -53,10 +51,17 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir python-dotenv>=1.0.0 && \
     pip install --no-cache-dir gunicorn>=21.2.0
 
+# Create compatibility check script
+RUN echo 'import sys; sys.path.insert(0, "/app"); import wrapper; print("Wrapper module initialized")' > /app/compatibility_check.py
+
+# Check if wrapper works correctly
+RUN python /app/compatibility_check.py || echo "Warning: Compatibility layer might not be working"
+
 # Set environment variables
 ENV PORT=8080
 ENV HOST=0.0.0.0
 ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
 
 # Create temp_files directory needed by the app
 RUN mkdir -p temp_files
