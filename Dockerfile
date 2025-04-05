@@ -13,9 +13,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY . .
 
-# Install Python dependencies with better error handling
+# Fix for supabase-py package and other dependencies
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir flask==2.3.3 && \
+    pip install --no-cache-dir google-generativeai==0.5.0 && \
+    pip install --no-cache-dir "Pillow<11.0.0" && \
+    pip install --no-cache-dir supabase && \
+    pip install --no-cache-dir python-dotenv>=1.0.0 && \
+    pip install --no-cache-dir werkzeug==2.3.7 && \
+    pip install --no-cache-dir itsdangerous==2.1.2 && \
+    pip install --no-cache-dir jinja2==3.1.2 && \
+    pip install --no-cache-dir requests>=2.30.0 && \
+    pip install --no-cache-dir gunicorn>=21.2.0
 
 # Set environment variables
 ENV PORT=8080
