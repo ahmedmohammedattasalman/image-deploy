@@ -14,11 +14,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy ALL application files first
 COPY . .
 
+# Display the requirements file content for debugging
+RUN cat requirements.txt
+
+# Upgrade pip first
+RUN pip install --upgrade pip setuptools wheel
+
 # Make wrapper executable
 RUN chmod +x wrapper.py
 
-# Install dependencies (requirements.txt already contains the correct versions)
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies one by one with verbose output
+RUN pip install --no-cache-dir -v flask==2.3.3 && \
+    pip install --no-cache-dir -v werkzeug==2.3.7 && \
+    pip install --no-cache-dir -v itsdangerous==2.1.2 && \
+    pip install --no-cache-dir -v jinja2==3.1.2 && \
+    pip install --no-cache-dir -v "Pillow<11.0.0" && \
+    pip install --no-cache-dir -v "python-dotenv>=1.0.0" && \
+    pip install --no-cache-dir -v "requests>=2.30.0" && \
+    pip install --no-cache-dir -v "gunicorn>=21.2.0" && \
+    pip install --no-cache-dir -v google-generativeai==0.3.1 && \
+    pip install --no-cache-dir -v protobuf==4.24.4 && \
+    pip install --no-cache-dir -v "supabase-py>=1.0.3" && \
+    pip list
 
 # Create compatibility check script
 RUN echo 'import sys; sys.path.insert(0, "/app"); import wrapper; print("Wrapper module initialized")' > /app/compatibility_check.py
