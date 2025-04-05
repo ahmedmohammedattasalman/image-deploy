@@ -1,4 +1,4 @@
-FROM python:3.9-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -21,35 +21,9 @@ COPY .env.example ./
 # Make wrapper executable
 RUN chmod +x wrapper.py
 
-# Install dependencies individually - explicitly avoid requirements.txt
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    # Core web app dependencies
-    pip install --no-cache-dir flask==2.3.3 && \
-    pip install --no-cache-dir werkzeug==2.3.7 && \
-    pip install --no-cache-dir itsdangerous==2.1.2 && \
-    pip install --no-cache-dir jinja2==3.1.2 && \
-    # For image processing and API
-    pip install --no-cache-dir "Pillow<11.0.0" && \
-    # Install Google packages with pinned versions
-    pip install --no-cache-dir google-api-core==2.11.0 && \
-    pip install --no-cache-dir google-api-python-client==2.79.0 && \
-    pip install --no-cache-dir google-auth==2.16.0 && \
-    pip install --no-cache-dir google-auth-httplib2==0.1.0 && \
-    pip install --no-cache-dir google-auth-oauthlib==1.0.0 && \
-    pip install --no-cache-dir google-generativeai==0.3.1 && \
-    # Manual installation of Supabase dependencies
-    pip install --no-cache-dir postgrest-py && \
-    pip install --no-cache-dir gotrue && \
-    pip install --no-cache-dir realtime-py && \
-    pip install --no-cache-dir storage3 && \
-    pip install --no-cache-dir supafunc && \
-    # Now install supabase without version specification
-    pip install --no-cache-dir supabase && \
-    # Other requirements
-    pip install --no-cache-dir requests>=2.30.0 && \
-    # For utility functions
-    pip install --no-cache-dir python-dotenv>=1.0.0 && \
-    pip install --no-cache-dir gunicorn>=21.2.0
+# Install dependencies with specific version for google-generativeai
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir google-generativeai==0.3.1 protobuf==4.24.4
 
 # Create compatibility check script
 RUN echo 'import sys; sys.path.insert(0, "/app"); import wrapper; print("Wrapper module initialized")' > /app/compatibility_check.py

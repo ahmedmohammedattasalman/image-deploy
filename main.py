@@ -1,13 +1,90 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify, send_from_directory, session
-import os
-import io
+#!/usr/bin/env python3
+# Emergency Google Generative AI patching
+# This runs FIRST before anything else to ensure compatibility
+import sys
+print("MAIN.PY: Emergency Gemini API compatibility check running...")
+try:
+    import google.generativeai
+    
+    # Direct high-priority patch for generate_content
+    if not hasattr(google.generativeai, 'generate_content'):
+        print("MAIN.PY CRITICAL: generate_content missing - applying emergency patch!")
+        
+        # Check if we have GenerativeModel available (newer API)
+        if hasattr(google.generativeai, 'GenerativeModel'):
+            def patched_generate_content(prompt_or_model, image=None, **kwargs):
+                """Global emergency replacement for generate_content"""
+                try:
+                    print("Using emergency patched generate_content in main.py")
+                    
+                    # Detect if this is the client.models.generate_content(model, contents) pattern
+                    if 'contents' in kwargs:
+                        model_name = prompt_or_model  # In this case it's the model name
+                        contents = kwargs.get('contents', [])
+                        config = kwargs.get('config', None)
+                        
+                        # Use the newer API with GenerativeModel
+                        model = google.generativeai.GenerativeModel(model_name)
+                        return model.generate_content(
+                            contents=contents,
+                            generation_config=config
+                        )
+                    
+                    # Handle the older direct generate_content(prompt, image) pattern
+                    else:
+                        prompt = prompt_or_model  # In this case it's the prompt text
+                        # Default to vision model if image provided
+                        model_name = "gemini-pro-vision" if image else "gemini-pro"
+                        model = google.generativeai.GenerativeModel(model_name)
+                        
+                        # Build content list
+                        content_list = [prompt]
+                        if image:
+                            content_list.append(image)
+                        
+                        # Generate the content with the newer API
+                        return model.generate_content(content_list)
+                
+                except Exception as e:
+                    print(f"CRITICAL ERROR in patched generate_content: {e}")
+                    # Create a minimal response structure that won't crash
+                    class MockResponse:
+                        def __init__(self):
+                            self.candidates = [{
+                                'content': {
+                                    'parts': [{
+                                        'text': f"ERROR: Failed to generate content - {str(e)}",
+                                        'inline_data': None
+                                    }]
+                                }
+                            }]
+                    return MockResponse()
+            
+            # Add the patched function directly to the module
+            google.generativeai.generate_content = patched_generate_content
+            print("MAIN.PY: Successfully patched generate_content")
+        else:
+            print("MAIN.PY WARNING: Neither generate_content nor GenerativeModel available!")
+    else:
+        print("MAIN.PY: generate_content already exists - no patching needed")
+
+except ImportError as ie:
+    print(f"MAIN.PY ERROR: Cannot import google.generativeai: {ie}")
+except Exception as e:
+    print(f"MAIN.PY ERROR during emergency patching: {e}")
+
+# Now continue with the regular imports
+import os 
 import tempfile
+import uuid
+import importlib
+from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify, send_from_directory, session
+import io
 from google import genai
 from google.genai import types
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 import base64
-import uuid
 import time
 import shutil
 import re

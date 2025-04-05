@@ -1,8 +1,12 @@
-# Git
+# Explicitly exclude requirements.txt to prevent installation issues
+requirements.txt
+
+# Version control
 .git
 .gitignore
+.github
 
-# Python
+# Python files
 __pycache__/
 *.py[cod]
 *$py.class
@@ -24,23 +28,24 @@ var/
 .installed.cfg
 *.egg
 
-# Virtual Environment
+# Virtual environments
 venv/
 ENV/
 env/
+.venv/
 
-# Environment variables
-.env
-
-# IDE
+# Development & IDE files
 .idea/
 .vscode/
 *.swp
 *.swo
+.env
+.editorconfig
 
 # Temp files
-temp_files/
 .DS_Store
+temp_files/
+*.tmp
 
 # Docker
 .dockerignore
