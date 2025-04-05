@@ -13,9 +13,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy application code but NOT requirements.txt
 COPY main.py ./
+COPY wrapper.py ./
 COPY templates ./templates/
 COPY setup_supabase.py ./
 COPY .env.example ./
+
+# Make wrapper executable
+RUN chmod +x wrapper.py
 
 # Install dependencies individually - explicitly avoid requirements.txt
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
@@ -26,7 +30,12 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir jinja2==3.1.2 && \
     # For image processing and API
     pip install --no-cache-dir "Pillow<11.0.0" && \
-    pip install --no-cache-dir google-generativeai==0.5.0 && \
+    # Install correct version of Google Generative AI
+    pip install --no-cache-dir google-api-python-client==2.79.0 && \
+    pip install --no-cache-dir google-auth==2.16.0 && \
+    pip install --no-cache-dir google-auth-httplib2==0.1.0 && \
+    pip install --no-cache-dir google-auth-oauthlib==1.0.0 && \
+    pip install --no-cache-dir google-generativeai==0.3.1 && \
     # Manual installation of Supabase dependencies
     pip install --no-cache-dir postgrest-py && \
     pip install --no-cache-dir gotrue && \
@@ -44,6 +53,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 # Set environment variables
 ENV PORT=8080
 ENV HOST=0.0.0.0
+ENV PYTHONPATH=/app
 
 # Create temp_files directory needed by the app
 RUN mkdir -p temp_files
@@ -51,5 +61,5 @@ RUN mkdir -p temp_files
 # Expose the port
 EXPOSE ${PORT}
 
-# Run the application
-CMD ["python", "main.py"] 
+# Run the application with the wrapper script
+CMD ["python", "wrapper.py"] 
