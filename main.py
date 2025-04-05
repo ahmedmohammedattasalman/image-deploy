@@ -144,6 +144,7 @@ import base64
 import time
 import shutil
 import re
+import textwrap
 # Supabase compatibility layer - try different package names
 try:
     from supabase import create_client
@@ -534,21 +535,72 @@ def store_image_supabase(image, image_type="original"):
             bucket_name = "images"
             file_path = f"{image_type}/{file_name}"
             
-            # Upload the file to Supabase Storage with retry mechanism
-            response = supabase_client.storage.from_(bucket_name).upload(
-                file_path, 
-                img_bytes, 
-                {"content-type": "image/png"}
-            )
+            # ADDED SAFETY: Check if storage is actually available
+            if not hasattr(supabase_client, 'storage') or not supabase_client.storage:
+                print("Warning: Supabase storage not available, falling back to local storage")
+                # Fall back to local storage
+                local_path = os.path.join(TEMP_FOLDER, file_name)
+                with open(local_path, 'wb') as f:
+                    f.write(img_bytes)
+                # Return a local "URL" that will work with send_from_directory
+                local_url = f"/temp/{file_name}"
+                return image_id, local_url
             
-            # Get public URL
-            public_url = supabase_client.storage.from_(bucket_name).get_public_url(file_path)
+            # Verify from_ method exists
+            if not hasattr(supabase_client.storage, 'from_'):
+                print("Warning: Supabase storage missing 'from_' method, falling back to local storage")
+                # Fall back to local storage
+                local_path = os.path.join(TEMP_FOLDER, file_name)
+                with open(local_path, 'wb') as f:
+                    f.write(img_bytes)
+                # Return a local "URL" that will work with send_from_directory
+                local_url = f"/temp/{file_name}"
+                return image_id, local_url
             
-            # Skip database insertion for now as the table might not exist
-            # Instead, just return the successful upload information
-            print(f"Successfully uploaded image to {file_path}")
-            
-            return image_id, public_url
+            # Extra safety for better error reporting
+            try:
+                # Get the bucket object first
+                bucket = supabase_client.storage.from_(bucket_name)
+                if not bucket:
+                    raise ValueError(f"Could not access bucket '{bucket_name}'")
+                
+                # Verify upload method exists
+                if not hasattr(bucket, 'upload'):
+                    raise ValueError("Bucket object missing 'upload' method")
+                
+                # Upload the file to Supabase Storage with retry mechanism
+                response = bucket.upload(
+                    file_path, 
+                    img_bytes, 
+                    {"content-type": "image/png"}
+                )
+                
+                # Verify get_public_url method exists
+                if not hasattr(bucket, 'get_public_url'):
+                    raise ValueError("Bucket object missing 'get_public_url' method")
+                
+                # Get public URL
+                public_url = bucket.get_public_url(file_path)
+                
+                # Skip database insertion for now as the table might not exist
+                # Instead, just return the successful upload information
+                print(f"Successfully uploaded image to {file_path}")
+                
+                return image_id, public_url
+            except Exception as storage_err:
+                print(f"Supabase storage error: {str(storage_err)}")
+                # Fall back to local storage as a last resort
+                try:
+                    local_path = os.path.join(TEMP_FOLDER, file_name)
+                    with open(local_path, 'wb') as f:
+                        f.write(img_bytes)
+                    # Return a local "URL" that will work with send_from_directory
+                    local_url = f"/temp/{file_name}"
+                    print(f"Saved to local storage instead: {local_path}")
+                    return image_id, local_url
+                except Exception as local_err:
+                    print(f"Even local storage failed: {str(local_err)}")
+                    return None, None
         
         except requests.exceptions.ConnectionError as e:
             if attempt < max_retries - 1:
@@ -561,7 +613,18 @@ def store_image_supabase(image, image_type="original"):
                 supabase_client = get_supabase_client()
             else:
                 print(f"Error storing image in Supabase after {max_retries} attempts: {str(e)}")
-                return None, None
+                # Fall back to local storage as a last resort
+                try:
+                    local_path = os.path.join(TEMP_FOLDER, file_name)
+                    with open(local_path, 'wb') as f:
+                        f.write(img_bytes)
+                    # Return a local "URL" that will work with send_from_directory
+                    local_url = f"/temp/{file_name}"
+                    print(f"Saved to local storage instead: {local_path}")
+                    return image_id, local_url
+                except Exception as local_err:
+                    print(f"Even local storage failed: {str(local_err)}")
+                    return None, None
         
         except Exception as e:
             print(f"Error storing image in Supabase: {str(e)}")
@@ -571,7 +634,18 @@ def store_image_supabase(image, image_type="original"):
                 # Try to get a fresh client for the next attempt
                 supabase_client = get_supabase_client()
             else:
-                return None, None
+                # Fall back to local storage as a last resort
+                try:
+                    local_path = os.path.join(TEMP_FOLDER, file_name)
+                    with open(local_path, 'wb') as f:
+                        f.write(img_bytes)
+                    # Return a local "URL" that will work with send_from_directory
+                    local_url = f"/temp/{file_name}"
+                    print(f"Saved to local storage instead: {local_path}")
+                    return image_id, local_url
+                except Exception as local_err:
+                    print(f"Even local storage failed: {str(local_err)}")
+                    return None, None
 
 # Helper to get image from Supabase
 def get_image_from_supabase(image_id):
@@ -896,36 +970,109 @@ def index():
                 result_image_b64 = None
                 
                 try:
-                    # Process the text response with special handling for Arabic
-                    for part in response.candidates[0].content.parts:
-                        if part.text is not None:
-                            # Add text direction marker for Arabic responses if needed
-                            if lang == "ar" and not part.text.strip().startswith('﷽') and not part.text.strip().startswith('بسم الله'):
-                                # Ensure proper Arabic text direction and formatting
-                                response_text += part.text
-                            else:
-                                response_text += part.text
-                        elif hasattr(part, 'inline_data') and part.inline_data is not None:
-                            result_image = Image.open(BytesIO(part.inline_data.data))
-                            
-                            # Compress the result image if needed before converting to base64
-                            if result_image.width * result_image.height > 1500000:
-                                result_image = compress_image(result_image)
-                                
-                            result_image_b64 = image_to_base64(result_image)
-                    
-                    # If we couldn't extract the image using the normal method, try an alternative approach
-                    if not result_image_b64:
-                        print("Trying alternative method to extract image from response...")
-                        # Attempt to extract the image from the response using a more direct method
-                        if hasattr(response, 'candidates') and len(response.candidates) > 0:
-                            candidate = response.candidates[0]
-                            if hasattr(candidate, 'content'):
-                                for part in candidate.content.parts:
-                                    if hasattr(part, 'inline_data') and part.inline_data is not None:
-                                        result_image = Image.open(BytesIO(part.inline_data.data))
+                    print("Processing response...")
+                    # CRITICAL FIX: Safer image extraction from response
+                    if hasattr(response, 'candidates') and len(response.candidates) > 0:
+                        for part in response.candidates[0].content.parts:
+                            # Extract text parts
+                            if hasattr(part, 'text') and part.text is not None:
+                                # Add text direction marker for Arabic responses if needed
+                                if lang == "ar" and not part.text.strip().startswith('﷽') and not part.text.strip().startswith('بسم الله'):
+                                    # Ensure proper Arabic text direction and formatting
+                                    response_text += part.text
+                                else:
+                                    response_text += part.text
+                                    
+                            # Safely extract image data
+                            elif hasattr(part, 'inline_data') and part.inline_data is not None:
+                                try:
+                                    # Ensure data is not empty
+                                    if not hasattr(part.inline_data, 'data') or not part.inline_data.data:
+                                        print("Warning: inline_data exists but data attribute is empty or missing")
+                                        continue
+                                        
+                                    # Get binary data
+                                    image_bytes = part.inline_data.data
+                                    print(f"Extracted image data: {len(image_bytes)} bytes")
+                                    
+                                    # Create a fresh BytesIO object
+                                    image_buffer = BytesIO(image_bytes)
+                                    image_buffer.seek(0)  # Rewind to the beginning
+                                    
+                                    # Try to open the image
+                                    try:
+                                        result_image = Image.open(image_buffer)
+                                        # Verify it's a valid image by accessing its format
+                                        img_format = result_image.format
+                                        print(f"Successfully opened image: format={img_format}, size={result_image.width}x{result_image.height}")
+                                        
+                                        # Convert to base64
                                         result_image_b64 = image_to_base64(result_image)
-                                        break
+                                        print(f"Successfully converted image to base64 ({len(result_image_b64)} chars)")
+                                        break  # Successfully got the image, exit the loop
+                                    except Exception as img_err:
+                                        print(f"Error opening image from BytesIO: {str(img_err)}")
+                                        # Try an alternative method with a temporary file
+                                        try:
+                                            print("Trying alternative method with temporary file...")
+                                            temp_img_path = os.path.join(TEMP_FOLDER, f"temp_response_{uuid.uuid4()}.png")
+                                            with open(temp_img_path, 'wb') as f:
+                                                f.write(image_bytes)
+                                            result_image = Image.open(temp_img_path)
+                                            result_image_b64 = image_to_base64(result_image)
+                                            os.remove(temp_img_path)  # Clean up
+                                            print("Alternative method succeeded")
+                                            break
+                                        except Exception as temp_err:
+                                            print(f"Alternative method also failed: {str(temp_err)}")
+                                except Exception as e:
+                                    print(f"Error processing inline_data: {str(e)}")
+                    
+                    # If we didn't get an image, try an alternative approach
+                    if not result_image_b64:
+                        print("Direct extraction failed, trying alternative response parsing...")
+                        try:
+                            # Try to access the raw response data differently
+                            if hasattr(response, '_raw_response') and response._raw_response:
+                                print("Found _raw_response attribute")
+                                raw_data = response._raw_response
+                                
+                                # Try to extract images from the raw response
+                                if isinstance(raw_data, dict) and 'candidates' in raw_data:
+                                    for candidate in raw_data['candidates']:
+                                        if 'content' in candidate and 'parts' in candidate['content']:
+                                            for part in candidate['content']['parts']:
+                                                if 'inline_data' in part and 'data' in part['inline_data']:
+                                                    try:
+                                                        img_data = base64.b64decode(part['inline_data']['data'])
+                                                        img_buffer = BytesIO(img_data)
+                                                        result_image = Image.open(img_buffer)
+                                                        result_image_b64 = image_to_base64(result_image)
+                                                        print("Successfully extracted image from raw response")
+                                                        break
+                                                    except Exception as raw_err:
+                                                        print(f"Error extracting image from raw data: {str(raw_err)}")
+                        except Exception as alt_err:
+                            print(f"Alternative extraction failed: {str(alt_err)}")
+                        
+                    # If we still don't have an image, and we have text, create a simple text image
+                    if not result_image_b64 and response_text:
+                        print("Creating fallback text image...")
+                        fallback_img = Image.new('RGB', (800, 400), color=(73, 109, 137))
+                        d = ImageDraw.Draw(fallback_img)
+                        try:
+                            font = ImageFont.truetype("arial.ttf", 18)
+                        except:
+                            font = ImageFont.load_default()
+                            
+                        # Display part of the response text on the image
+                        wrapped_text = "\n".join(textwrap.wrap(response_text[:500], width=50))
+                        d.text((20, 20), "Gemini could not generate an image, but provided this response:", fill=(255, 255, 255), font=font)
+                        d.text((20, 60), wrapped_text, fill=(255, 255, 255), font=font)
+                        result_image = fallback_img
+                        result_image_b64 = image_to_base64(result_image)
+                        print("Created fallback text image")
+                        
                 except (IndexError, AttributeError) as e:
                     # Handle parsing errors with Gemini response
                     print(f"Error parsing Gemini response: {str(e)}")
@@ -941,8 +1088,13 @@ def index():
                                         if hasattr(part, 'text') and part.text:
                                             response_text += part.text
                                         elif hasattr(part, 'inline_data') and part.inline_data:
-                                            result_image = Image.open(BytesIO(part.inline_data.data))
-                                            result_image_b64 = image_to_base64(result_image)
+                                            try:
+                                                img_bytes = part.inline_data.data
+                                                img_buffer = BytesIO(img_bytes)
+                                                result_image = Image.open(img_buffer)
+                                                result_image_b64 = image_to_base64(result_image)
+                                            except Exception as inner_img_err:
+                                                print(f"Inner image extraction error: {str(inner_img_err)}")
                     except Exception as inner_e:
                         print(f"Alternative response parsing also failed: {str(inner_e)}")
                 
