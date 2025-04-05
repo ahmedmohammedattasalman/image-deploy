@@ -11,19 +11,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy application code but NOT requirements.txt
+# Copy application code WITH requirements.txt
 COPY wrapper.py ./
 COPY main.py ./
 COPY templates ./templates/
 COPY setup_supabase.py ./
 COPY .env.example ./
+COPY requirements.txt ./
 
 # Make wrapper executable
 RUN chmod +x wrapper.py
 
-# Install dependencies with specific version for google-generativeai
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir google-generativeai==0.3.1 protobuf==4.24.4
+# Install dependencies (requirements.txt already contains the correct versions)
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Create compatibility check script
 RUN echo 'import sys; sys.path.insert(0, "/app"); import wrapper; print("Wrapper module initialized")' > /app/compatibility_check.py
