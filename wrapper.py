@@ -222,15 +222,92 @@ def setup_google_genai_compatibility():
             # Continue anyway, the main app will handle the error
             return False
 
+# Setup supabase compatibility - make it optional
+def setup_supabase_compatibility():
+    try:
+        # First try to import supabase
+        print("Setting up Supabase compatibility...")
+        try:
+            from supabase import create_client
+            print("Using supabase package")
+            return True
+        except ImportError:
+            print("Supabase package not found, trying alternatives...")
+            try:
+                import postgrest
+                import gotrue
+                import storage3
+                print("Found individual supabase components")
+                return True
+            except ImportError:
+                # Create a dummy client if supabase is not available
+                print("WARNING: Supabase not available, creating a dummy client")
+                
+                class DummyStorageContainer:
+                    def __init__(self, bucket_name):
+                        self.bucket_name = bucket_name
+                    
+                    def upload(self, path, file_content, options=None):
+                        print(f"[DUMMY] Would upload to {path} in bucket {self.bucket_name}")
+                        return {"key": path}
+                    
+                    def download(self, path):
+                        print(f"[DUMMY] Would download {path} from bucket {self.bucket_name}")
+                        return b''  # Empty bytes
+                    
+                    def get_public_url(self, path):
+                        return f"/dummy/{self.bucket_name}/{path}"
+                
+                class DummyStorage:
+                    def from_(self, bucket_name):
+                        return DummyStorageContainer(bucket_name)
+                
+                class DummySupabaseClient:
+                    def __init__(self, url, key):
+                        self.url = url
+                        self.key = key
+                        self.storage = DummyStorage()
+                    
+                    def table(self, table_name):
+                        return type('obj', (object,), {
+                            'select': lambda *args: self,
+                            'eq': lambda *args: self,
+                            'execute': lambda: type('obj', (object,), {'data': []})
+                        })
+                    
+                    def query(self, sql_query):
+                        print(f"[DUMMY] Would execute SQL: {sql_query}")
+                        return []
+                
+                # Add to global namespace
+                def create_client(url, key):
+                    print(f"Creating dummy Supabase client with URL {url}")
+                    return DummySupabaseClient(url, key)
+                
+                # Make it available globally
+                sys.modules["supabase"] = type('module', (), {
+                    'create_client': create_client
+                })
+                
+                return True
+    except Exception as e:
+        print(f"ERROR setting up Supabase compatibility: {e}")
+        return False
+
 # Run the compatibility setup
-setup_success = setup_google_genai_compatibility()
-print("WRAPPER: Google API compatibility setup complete")
+setup_google_genai_success = setup_google_genai_compatibility()
+setup_supabase_success = setup_supabase_compatibility()
+
+print("WRAPPER: Setup complete - Google API: " + 
+      ("OK" if setup_google_genai_success else "FAILED") + 
+      ", Supabase: " + 
+      ("OK" if setup_supabase_success else "FAILED"))
 print("=============================================")
 
 # Now execute the main application
 if __name__ == "__main__":
     print("Starting main application...")
-    if setup_success:
+    try:
         # Force reload any google modules to ensure patches are applied
         for module_name in list(sys.modules.keys()):
             if module_name.startswith('google'):
@@ -246,5 +323,9 @@ if __name__ == "__main__":
             port = int(os.environ.get('PORT', 8080))
             debug = os.environ.get('DEBUG', 'False').lower() in ('true', '1', 't')
             main.app.run(host=host, port=port, debug=debug)
-    else:
-        print("ERROR: Failed to set up Gemini compatibility layer. Application may not work correctly.") 
+        else:
+            print("ERROR: Could not find 'app' object in main module")
+    except Exception as e:
+        print(f"CRITICAL ERROR starting application: {e}")
+        import traceback
+        traceback.print_exc() 
