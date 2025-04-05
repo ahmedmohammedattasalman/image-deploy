@@ -11,30 +11,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy only necessary files first (excluding requirements.txt)
-COPY main.py .
-COPY templates/ ./templates/
-COPY setup_supabase.py .
-COPY .env.example .
+# Copy application code but NOT requirements.txt
+COPY main.py ./
+COPY templates ./templates/
+COPY setup_supabase.py ./
+COPY .env.example ./
 
-# Install dependencies directly (skip requirements.txt)
+# Install dependencies individually - explicitly avoid requirements.txt
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    # Core web app dependencies
     pip install --no-cache-dir flask==2.3.3 && \
-    pip install --no-cache-dir google-generativeai==0.5.0 && \
-    pip install --no-cache-dir "Pillow<11.0.0" && \
-    pip install --no-cache-dir python-supabase==0.7.0 && \
-    pip install --no-cache-dir python-dotenv>=1.0.0 && \
     pip install --no-cache-dir werkzeug==2.3.7 && \
     pip install --no-cache-dir itsdangerous==2.1.2 && \
     pip install --no-cache-dir jinja2==3.1.2 && \
+    # For image processing and API
+    pip install --no-cache-dir "Pillow<11.0.0" && \
+    pip install --no-cache-dir google-generativeai==0.5.0 && \
+    pip install --no-cache-dir python-supabase==1.0.3 && \
     pip install --no-cache-dir requests>=2.30.0 && \
+    # For utility functions
+    pip install --no-cache-dir python-dotenv>=1.0.0 && \
     pip install --no-cache-dir gunicorn>=21.2.0
 
 # Set environment variables
 ENV PORT=8080
 ENV HOST=0.0.0.0
 
-# Create temp_files directory that might be needed by the app
+# Create temp_files directory needed by the app
 RUN mkdir -p temp_files
 
 # Expose the port

@@ -11,7 +11,14 @@ import uuid
 import time
 import shutil
 import re
-from supabase import create_client
+# Add compatibility layer for supabase packages
+try:
+    from supabase import create_client
+except ImportError:
+    try:
+        from python_supabase import create_client
+    except ImportError:
+        raise ImportError("Could not import a supabase client. Please install either 'supabase-py' or 'python-supabase'")
 from dotenv import load_dotenv
 import requests
 import random

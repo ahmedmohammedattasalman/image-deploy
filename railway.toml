@@ -1,8 +1,6 @@
 [build]
 builder = "DOCKERFILE"
-buildCommand = ""
 dockerfilePath = "Dockerfile"
-watchPatterns = ["main.py", "templates/**", "requirements.txt"]
 
 [deploy]
 numReplicas = 1
